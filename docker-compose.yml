@@ -1,0 +1,48 @@
+services:
+  # ── PostgreSQL Database ─────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: lohono-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-lohono_api}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
+      POSTGRES_DB: ${DB_NAME:-lohono_api_production}
+    ports:
+      - "${DB_EXTERNAL_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lohono_api} -d ${DB_NAME:-lohono_api_production}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── MCP Server (SSE mode) ──────────────────────────────────────────────
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lohono-mcp-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-lohono_api}
+      DB_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
+      DB_NAME: ${DB_NAME:-lohono_api_production}
+      SALES_FUNNEL_RULES_PATH: /app/config/sales_funnel_rules_v2.yml
+      PORT: "3000"
+    ports:
+      - "${MCP_PORT:-3000}:3000"
+    volumes:
+      # Mount config dir so rules can be updated without rebuilding
+      - ./config:/app/config:ro
+
+volumes:
+  pgdata:
+    driver: local

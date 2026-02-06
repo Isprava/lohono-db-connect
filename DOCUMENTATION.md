@@ -18,6 +18,9 @@
 14. [Data Flow Diagrams](#14-data-flow-diagrams)
 15. [Error Handling](#15-error-handling)
 16. [Example Prompts & Workflows](#16-example-prompts--workflows)
+17. [Adding a New MCP Tool](#17-adding-a-new-mcp-tool)
+18. [Adding New Schema Intelligence Rules](#18-adding-new-schema-intelligence-rules)
+19. [Docker Deployment](#19-docker-deployment)
 
 ---
 
@@ -917,3 +920,370 @@ If the rules YAML file is not found at the configured path, `loadRules()` will t
 **LLM Workflow:**
 1. `list_tables({})` → returns all public tables
 2. `describe_table({ table_name: "development_opportunities" })` → column details
+
+---
+
+## 17. Adding a New MCP Tool
+
+This section walks through the complete process of adding a new tool to the server. All tool code lives in `src/tools.ts` — both entry points (`index.ts`, `index-sse.ts`) automatically pick up new tools with no changes needed.
+
+### 17.1 Step-by-Step
+
+**Step 1 — Define a Zod validation schema** (in `src/tools.ts`, near line 24)
+
+```typescript
+const MyNewToolInputSchema = z.object({
+  some_field: z.string().min(1, "some_field cannot be empty"),
+  optional_field: z.number().optional(),
+});
+```
+
+**Step 2 — Add the tool definition** to the `toolDefinitions` array (in `src/tools.ts`, near line 65)
+
+```typescript
+{
+  name: "my_new_tool",
+  description:
+    "A clear description of what this tool does. This text is shown to the LLM so it knows when to call the tool.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      some_field: {
+        type: "string",
+        description: "Description of this parameter",
+      },
+      optional_field: {
+        type: "number",
+        description: "Optional numeric parameter",
+      },
+    },
+    required: ["some_field"],
+  },
+},
+```
+
+**Step 3 — Add the handler** inside `handleToolCall()` (in `src/tools.ts`, before the `throw new Error("Unknown tool")` line)
+
+```typescript
+if (name === "my_new_tool") {
+  const { some_field, optional_field } = MyNewToolInputSchema.parse(args);
+
+  // Your logic here — database query, computation, etc.
+  const result = await executeReadOnlyQuery(
+    "SELECT * FROM my_table WHERE column = $1 LIMIT $2",
+    [some_field, optional_field ?? 10]
+  );
+
+  return {
+    content: [
+      { type: "text", text: JSON.stringify(result.rows, null, 2) },
+    ],
+  };
+}
+```
+
+**Step 4 — Build and test**
+
+```bash
+npm run build
+npm run dev:sse
+# In another terminal:
+curl http://localhost:3000/health
+```
+
+### 17.2 Checklist
+
+- Zod schema defined with clear error messages
+- Tool added to `toolDefinitions` with `name`, `description`, `inputSchema`
+- Handler added in `handleToolCall()` with Zod `.parse(args)` call
+- Description is clear enough for an LLM to know when to use it
+- `required` array in `inputSchema` lists all mandatory fields
+- If the tool queries the database, it uses `executeReadOnlyQuery()`
+- No changes needed in `index.ts` or `index-sse.ts`
+
+### 17.3 Tool Design Guidelines
+
+- **Naming:** Use `snake_case` (e.g., `list_tables`, `classify_sales_intent`).
+- **Descriptions:** Write for an LLM audience — be explicit about what the tool returns and when to use it.
+- **Input schemas:** Must use JSON Schema format (not Zod) in `inputSchema`. Zod is only used for runtime validation in the handler.
+- **Error handling:** Throw errors or return `{ isError: true }`. The outer `try/catch` in `handleToolCall()` catches Zod errors and generic errors automatically.
+- **Return format:** Always return `{ content: [{ type: "text", text: "..." }] }`. Use `JSON.stringify(data, null, 2)` for structured data.
+
+---
+
+## 18. Adding New Schema Intelligence Rules
+
+This section explains how to extend the sales funnel rules YAML to add new query patterns, business rules, metrics, or funnel stages.
+
+### 18.1 Adding a New Query Pattern
+
+A query pattern represents a distinct type of SQL query the LLM can generate.
+
+**Step 1 — Add to `query_categories`** (if a new category is needed)
+
+```yaml
+query_categories:
+  my_new_category:
+    description: "Description of this category"
+    patterns: ["my_new_pattern"]
+```
+
+**Step 2 — Add the pattern to `query_patterns`**
+
+```yaml
+query_patterns:
+  my_new_pattern:
+    category: "my_new_category"  # or an existing category
+    description: "What this query does"
+
+    user_intent_keywords:
+      - "keyword the user might say"
+      - "another keyword"
+
+    structure: "Brief description of the SQL structure (e.g. CTE, UNION, single table)"
+
+    applies_date_filter: "mtd_current_progressive"  # reference an existing date filter
+    applies_timezone: true
+    applies_progressive_filter: true
+    applies_slug_exclusions: true
+    applies_source_exclusion: false
+```
+
+**Step 3 — Add intent keywords** to `intent_classification` (if needed)
+
+```yaml
+intent_classification:
+  metric_keywords:
+    my_new_metric:
+      keywords: ["some keyword", "another"]
+      suggests_categories: ["my_new_category"]
+```
+
+**Step 4 — Add validation checks** to `validation_checklist.category_specific_checks`
+
+```yaml
+validation_checklist:
+  category_specific_checks:
+    my_new_category:
+      - id: "my_check"
+        rule: "Description of what to verify"
+        check: "The SQL pattern to look for"
+```
+
+**No code changes are needed.** The schema-rules engine automatically picks up new patterns, categories, and validation checks from the YAML.
+
+### 18.2 Adding a New Core Business Rule
+
+Core rules are mandatory constraints that apply across query categories.
+
+```yaml
+core_rules:
+  my_new_rule:
+    description: "What this rule enforces"
+    sql_pattern: "SQL snippet, e.g. column_name IS NOT NULL"
+    applies_to: ["mtd_aggregate", "source_breakdown"]  # or "ALL queries"
+    mandatory: true
+    note: "Any important exceptions or context"
+```
+
+The `applies_to` field controls which query categories this rule is returned for:
+- `"ALL queries"` — applies universally
+- `["category1", "category2"]` — applies only to listed categories
+
+The engine in `schema-rules.ts:getApplicableRules()` automatically filters rules by category.
+
+### 18.3 Adding a New Date Filter
+
+```yaml
+date_filters:
+  my_new_filter:
+    description: "When to use this filter"
+    applies_to: ["my_new_category"]
+    start_date_sql: "SQL expression for start date"
+    end_date_sql: "SQL expression for end date"
+    date_filter_sql: |
+      ({{timestamp_column}} + interval '330 minutes')::date >= start_expression
+      AND ({{timestamp_column}} + interval '330 minutes')::date < end_expression
+    progressive_day_filter: false
+    progressive_filter_sql: ""  # only if progressive_day_filter is true
+```
+
+Reference this filter in your query pattern via `applies_date_filter: "my_new_filter"`.
+
+### 18.4 Adding a New Funnel Stage
+
+```yaml
+funnel_stages:
+  my_stage:
+    description: "What this stage represents"
+    timestamp_column: "my_timestamp_column"
+    table: "development_opportunities"
+    count_expression: "COUNT(DISTINCT(development_opportunities.slug))"
+    mandatory_conditions:
+      - "my_timestamp_column IS NOT NULL"
+    mandatory_exclusions:
+      - "slug_exclusions"  # reference a core rule by name
+    no_source_exclusion: true  # or false
+    applies_timezone: true
+    applies_date_filter: true
+    applies_progressive_filter: true
+```
+
+### 18.5 Adding a New Metric
+
+```yaml
+metrics:
+  my_metric:
+    description: "What this metric measures"
+    applies_to: ["mtd_aggregate"]  # which categories include this metric
+    patterns_using: ["mtd_funnel_current", "mtd_funnel_last_year"]
+    table: "development_opportunities"
+    calculation_sql: "SQL expression for the metric"
+    aggregation: "AVG"  # or COUNT, SUM, etc.
+    timestamp_column: "the_timestamp_to_filter_on"
+    applies_timezone: true
+    applies_date_filter: true
+    applies_progressive_filter: true
+    applies_slug_exclusions: true
+```
+
+### 18.6 Adding a New Source Category
+
+```yaml
+source_mapping:
+  categories:
+    "My New Category":
+      source_values: ["source_value_1", "source_value_2"]
+```
+
+Then update the `sql_case_statement` to include the new WHEN clause:
+
+```yaml
+source_mapping:
+  sql_case_statement: |
+    CASE
+      ... existing cases ...
+      WHEN source IN ('source_value_1','source_value_2') THEN 'My New Category'
+      ELSE 'Other'
+    END
+```
+
+### 18.7 Adding Anti-Patterns
+
+```yaml
+anti_patterns:
+  - pattern: "Short description of the mistake"
+    why: "Why this is wrong"
+    wrong: "Example of incorrect SQL"
+    correct: "Example of correct SQL"
+```
+
+### 18.8 Where Changes Are Needed
+
+| What you're adding | Files to modify | Code changes needed? |
+|---|---|---|
+| New query pattern | `config/sales_funnel_rules_v2.yml` | No |
+| New core rule | `config/sales_funnel_rules_v2.yml` | No |
+| New date filter | `config/sales_funnel_rules_v2.yml` | No |
+| New funnel stage | `config/sales_funnel_rules_v2.yml` | No |
+| New metric | `config/sales_funnel_rules_v2.yml` | No |
+| New source category | `config/sales_funnel_rules_v2.yml` | No |
+| New anti-pattern | `config/sales_funnel_rules_v2.yml` | No |
+| New validation check | `config/sales_funnel_rules_v2.yml` | No |
+| New intent keywords | `config/sales_funnel_rules_v2.yml` | No |
+| New MCP tool | `src/tools.ts` | Yes — see Section 17 |
+| New YAML top-level section | `config/*.yml` + `src/schema-rules.ts` | Yes — update types and loader |
+
+**Key takeaway:** All schema intelligence changes are YAML-only. The engine reads the YAML dynamically — no rebuild or code changes needed. In Docker, the `config/` directory is mounted as a volume, so you can even update rules without restarting the container (rules are cached on first load, so a restart is needed for changes to take effect).
+
+---
+
+## 19. Docker Deployment
+
+### 19.1 Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│                 Docker Network                    │
+│                                                  │
+│  ┌─────────────────┐    ┌─────────────────────┐  │
+│  │  lohono-postgres │    │  lohono-mcp-server  │  │
+│  │  PostgreSQL 16   │◄───│  Node.js 20         │  │
+│  │  Port 5432       │    │  Port 3000          │  │
+│  └────────┬────────┘    └────────┬────────────┘  │
+│           │                      │               │
+└───────────┼──────────────────────┼───────────────┘
+            │                      │
+       Host:5433              Host:3000
+```
+
+### 19.2 Files
+
+- `Dockerfile` — Multi-stage build (builder + production)
+- `docker-compose.yml` — Orchestrates both containers
+- `.dockerignore` — Excludes node_modules, dist, .git from build context
+- `.env.example` — Template for environment variables
+- `config/sales_funnel_rules_v2.yml` — Business rules (mounted as volume)
+
+### 19.3 Quick Start
+
+```bash
+# Copy and edit environment variables
+cp .env.example .env
+
+# Build and start both containers
+docker compose up -d
+
+# Verify health
+curl http://localhost:3000/health
+# {"status":"ok","server":"lohono-db-context","db":"connected"}
+
+# View logs
+docker compose logs -f mcp-server
+
+# Stop
+docker compose down
+
+# Stop and remove data volume
+docker compose down -v
+```
+
+### 19.4 Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DB_USER` | `lohono_api` | PostgreSQL user |
+| `DB_PASSWORD` | `lohono_api_password` | PostgreSQL password |
+| `DB_NAME` | `lohono_api_production` | PostgreSQL database |
+| `DB_EXTERNAL_PORT` | `5433` | Host port for PostgreSQL |
+| `MCP_PORT` | `3000` | Host port for MCP SSE server |
+
+### 19.5 Updating Rules Without Rebuild
+
+The `config/` directory is mounted as a read-only volume. To update rules:
+
+1. Edit `config/sales_funnel_rules_v2.yml` on the host.
+2. Restart the MCP server to pick up changes (rules are cached on first load):
+   ```bash
+   docker compose restart mcp-server
+   ```
+
+### 19.6 Connecting Claude Desktop to Dockerized MCP
+
+Since the Docker setup runs the SSE transport, configure Claude Desktop with the SSE URL:
+
+```json
+{
+  "mcpServers": {
+    "lohono-db-context": {
+      "url": "http://localhost:3000/sse"
+    }
+  }
+}
+```
+
+### 19.7 Rebuilding After Code Changes
+
+```bash
+docker compose up -d --build
+```

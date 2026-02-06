@@ -99,7 +99,7 @@ interface KeywordMapping {
 
 const RULES_PATH =
   process.env.SALES_FUNNEL_RULES_PATH ||
-  "/home/isprava/Downloads/sales_funnel_rules_v2.yml";
+  "/app/config/sales_funnel_rules_v2.yml";
 
 let _rules: SalesFunnelRules | null = null;
 
