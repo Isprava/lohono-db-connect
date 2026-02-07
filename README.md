@@ -30,14 +30,14 @@ sequenceDiagram
     C->>M: Save user message
     C->>A: messages.create (with MCP tools)
     A-->>C: tool_use: query
-    C->>S: callTool("query", {sql})
-    S->>PG: BEGIN READ ONLY; SELECT ...
+    C->>S: callTool(query, sql)
+    S->>PG: SELECT ... (read-only txn)
     PG-->>S: rows
-    S-->>C: tool result (JSON)
+    S-->>C: tool result JSON
     C->>A: tool_result
     A-->>C: assistant text
     C->>M: Save assistant message
-    C-->>W: { assistantText, toolCalls }
+    C-->>W: assistantText + toolCalls
     W-->>U: Render response
 ```
 
