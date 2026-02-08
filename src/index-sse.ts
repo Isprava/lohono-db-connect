@@ -29,8 +29,9 @@ app.use(cors());
 app.use(express.json());
 app.use(requestLoggingMiddleware());
 
-// ── Session email storage (SSE transport → user email from headers) ──
+// ── Session storage ──
 const sessionEmails = new Map<SSEServerTransport, string>();
+const sessionTransports = new Map<string, SSEServerTransport>();
 
 // Create MCP server
 const server = new Server(
@@ -84,24 +85,33 @@ app.get("/sse", async (req, res) => {
   const sseSpan = startSSESessionSpan(headerEmail);
   const transport = new SSEServerTransport("/messages", res);
 
-  // Store header email for this session
+  // Store header email and transport for this session
   if (headerEmail) {
     sessionEmails.set(transport, headerEmail);
   }
+  sessionTransports.set(transport.sessionId, transport);
 
   await server.connect(transport);
 
   req.on("close", () => {
     logInfo("SSE connection closed", { user_email: headerEmail });
     sseSpan.end();
+    sessionTransports.delete(transport.sessionId);
     sessionEmails.delete(transport);
   });
 });
 
 // POST endpoint for client messages
 app.post("/messages", async (req, res) => {
-  logInfo("Received SSE message", { message_type: typeof req.body });
-  res.status(200).end();
+  const sessionId = req.query.sessionId as string;
+  const transport = sessionTransports.get(sessionId);
+  if (!transport) {
+    logError("No active SSE session for sessionId", undefined, { sessionId });
+    res.status(400).json({ error: "No active SSE session for this sessionId" });
+    return;
+  }
+  logInfo("Received SSE message", { sessionId, message_type: typeof req.body });
+  await transport.handlePostMessage(req, res, req.body);
 });
 
 // Health check endpoint

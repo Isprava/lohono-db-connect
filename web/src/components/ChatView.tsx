@@ -62,15 +62,8 @@ function ToolCallBlock({
 
 function MessageBubble({ msg, nextMsg }: { msg: Message; nextMsg?: Message }) {
   if (msg.role === "tool_use") {
-    // Find matching tool_result
-    const result = nextMsg?.role === "tool_result" ? nextMsg.content : undefined;
-    return (
-      <ToolCallBlock
-        name={msg.toolName || "unknown"}
-        input={msg.toolInput}
-        result={result}
-      />
-    );
+    // Hide tool calls from display
+    return null;
   }
 
   if (msg.role === "tool_result") {
