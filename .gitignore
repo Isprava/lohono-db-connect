@@ -11,3 +11,4 @@ web/dist/
 db/*.sql
 db/*.sql.gz
 db/*.dump
+*.dump
