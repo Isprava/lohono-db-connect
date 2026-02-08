@@ -326,146 +326,34 @@ Since you're using an ALB, nginx will act as a reverse proxy on the EC2 instance
 
 **Note**: The MCP Server (port 3000) is NOT exposed externally - it's only accessed internally by the MCP Client.
 
+**Install nginx:**
+
 ```bash
 # Install nginx
 sudo apt-get install -y nginx
 
 # Remove default site
 sudo rm /etc/nginx/sites-enabled/default
-
-# Create application config
-sudo nano /etc/nginx/sites-available/lohono-mcp
 ```
 
-**Add this nginx configuration:**
-
-```nginx
-# Upstream definitions for Docker services
-upstream mcp_web {
-    server localhost:8080;
-    keepalive 32;
-}
-
-upstream mcp_api {
-    server localhost:3001;
-    keepalive 32;
-}
-
-# Main application server - ailabs.lohono.com
-server {
-    listen 80;
-    listen [::]:80;
-    
-    server_name ailabs.lohono.com;
-    
-    # Client max body size (for file uploads if any)
-    client_max_body_size 10M;
-    
-    # Logging
-    access_log /var/log/nginx/ailabs-access.log;
-    error_log /var/log/nginx/ailabs-error.log warn;
-    
-    # Health check endpoint for ALB Target Group
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-    
-    # API endpoints - proxy to MCP Client (port 3001)
-    # This handles all API calls from the web UI to the backend
-    location /api/ {
-        proxy_pass http://mcp_api;
-        proxy_http_version 1.1;
-        
-        # WebSocket support (if needed for real-time features)
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        
-        # Standard proxy headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        
-        # Extended timeouts for Claude API calls (can take 30s-5min)
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-        
-        # Disable buffering for streaming responses
-        proxy_buffering off;
-        proxy_cache_bypass $http_upgrade;
-        
-        # CORS headers (if needed for cross-origin requests)
-        add_header 'Access-Control-Allow-Origin' '$http_origin' always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' 'Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With' always;
-        
-        # Handle preflight OPTIONS requests
-        if ($request_method = 'OPTIONS') {
-            return 204;
-        }
-    }
-    
-    # Web UI - proxy to web container (port 8080)
-    # This serves the React application and all static assets
-    location / {
-        proxy_pass http://mcp_web;
-        proxy_http_version 1.1;
-        
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Cache static assets (JS, CSS, images)
-        proxy_cache_bypass $http_upgrade;
-        
-        # Standard timeouts for web content
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-    
-    # Security: Deny access to hidden files
-    location ~ /\. {
-        deny all;
-        access_log off;
-        log_not_found off;
-    }
-}
-
-# Default server block - return 444 for requests to IP or unknown domains
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-    
-    # Health check for ALB (in case it hits the default server)
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-    
-    # Reject all other requests
-    location / {
-        return 444;
-    }
-}
-```
-
-**Enable the site and start nginx:**
+**Generate nginx configuration from your .env:**
 
 ```bash
-# Enable the site
-sudo ln -s /etc/nginx/sites-available/lohono-mcp /etc/nginx/sites-enabled/
+# Ensure your .env has production settings
+cat >> .env << EOF
+DEPLOYMENT_MODE=production
+PUBLIC_DOMAIN=ailabs.lohono.com
+EOF
+
+# Generate nginx config
+./scripts/generate-nginx-config.sh /tmp/nginx-lohono-mcp.conf
+
+# Review the generated config
+cat /tmp/nginx-lohono-mcp.conf
+
+# Install the config
+sudo cp /tmp/nginx-lohono-mcp.conf /etc/nginx/sites-available/lohono-mcp
+sudo ln -sf /etc/nginx/sites-available/lohono-mcp /etc/nginx/sites-enabled/
 
 # Test configuration
 sudo nginx -t
@@ -473,10 +361,11 @@ sudo nginx -t
 # Start nginx
 sudo systemctl enable nginx
 sudo systemctl start nginx
-
-# Check status
-sudo systemctl status nginx
 ```
+
+**Alternative: Manual configuration**
+
+If you prefer to manually create the config, see `docs/nginx-config-reference.conf` for the full template. The script-generated config is recommended for consistency.
 
 ### Step 14: Verify Nginx Proxy
 
