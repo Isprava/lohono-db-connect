@@ -92,6 +92,13 @@ export default function Sidebar({
         )}
       </div>
 
+      {/* Data dump info */}
+      <div className="border-t border-gray-800 px-3 py-2">
+        <p className="text-xs text-gray-500 text-center">
+          Data dump: 2026-02-08 14:09:50
+        </p>
+      </div>
+
       {/* User profile */}
       <div className="border-t border-gray-800 p-3 relative">
         <button
