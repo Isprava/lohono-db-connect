@@ -221,7 +221,7 @@ obs-clean: ## Stop observability stack and remove volumes
 deploy-all: env obs-network ## Deploy app + observability (1-click production)
 	@echo "═══ Deploying Lohono AI + Observability ═══"
 	$(COMPOSE_OBS) up -d --build
-	$(COMPOSE) up -d --build --remove-orphans
+	OTEL_SDK_DISABLED=false $(COMPOSE) up -d --build --remove-orphans
 	@echo ""
 	@echo "═══ Full deployment complete ═══"
 	@echo "  Web UI:         http://localhost:$${WEB_PORT:-8080}"

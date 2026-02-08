@@ -60,6 +60,7 @@ services:
       SALES_FUNNEL_RULES_PATH: /app/config/sales_funnel_rules_v2.yml
       PORT: "3000"
       # ── Observability ──
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_SERVICE_NAME: lohono-mcp-server
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       NODE_ENV: ${NODE_ENV:-production}
@@ -98,6 +99,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
       DB_NAME: ${DB_NAME:-lohono_api_production}
       # ── Observability ──
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_SERVICE_NAME: lohono-mcp-client
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       NODE_ENV: ${NODE_ENV:-production}
