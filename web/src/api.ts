@@ -20,12 +20,10 @@ async function request<T>(
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    credentials: "same-origin",
   });
 
   if (res.status === 401) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/auth/callback";
     throw new Error("Unauthorized");
   }
 

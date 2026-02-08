@@ -37,20 +37,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (savedToken && savedUser) {
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
-      // Verify session is still valid
+      setLoading(false);
+      // Verify session is still valid in background
       authApi
         .me()
         .then((u) => {
           setUser(u);
           localStorage.setItem("user", JSON.stringify(u));
         })
-        .catch(() => {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          setToken(null);
-          setUser(null);
-        })
-        .finally(() => setLoading(false));
+        .catch((err) => {
+          // Only clear session if it's actually invalid (401)
+          if (err.message === "Unauthorized") {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            setToken(null);
+            setUser(null);
+          }
+          // Otherwise, keep the cached session (network error, server down, etc.)
+        });
     } else {
       setLoading(false);
     }
