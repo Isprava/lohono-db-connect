@@ -8,59 +8,60 @@ import {
 
 // ── MessageBubble ──────────────────────────────────────────────────────────
 
-function ToolCallBlock({
-  name,
-  input,
-  result,
-}: {
-  name: string;
-  input?: Record<string, unknown>;
-  result?: string;
-}) {
-  const [open, setOpen] = useState(false);
+// Unused for now - can be used to display tool calls in the future
+// function ToolCallBlock({
+//   name,
+//   input,
+//   result,
+// }: {
+//   name: string;
+//   input?: Record<string, unknown>;
+//   result?: string;
+// }) {
+//   const [open, setOpen] = useState(false);
 
-  return (
-    <div className="my-2 border border-gray-700 rounded-lg overflow-hidden text-sm">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-800/60 hover:bg-gray-800 transition-colors text-left"
-      >
-        <svg
-          className={`w-3.5 h-3.5 text-gray-500 transition-transform ${open ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="text-blue-400 font-mono text-xs">{name}</span>
-        <span className="text-gray-500 text-xs">tool call</span>
-      </button>
-      {open && (
-        <div className="px-3 py-2 bg-gray-900/50 space-y-2">
-          {input && (
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Input:</p>
-              <pre className="text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto">
-                {JSON.stringify(input, null, 2)}
-              </pre>
-            </div>
-          )}
-          {result && (
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Result:</p>
-              <pre className="text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto max-h-64 overflow-y-auto">
-                {result}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+//   return (
+//     <div className="my-2 border border-gray-700 rounded-lg overflow-hidden text-sm">
+//       <button
+//         onClick={() => setOpen(!open)}
+//         className="w-full flex items-center gap-2 px-3 py-2 bg-gray-800/60 hover:bg-gray-800 transition-colors text-left"
+//       >
+//         <svg
+//           className={`w-3.5 h-3.5 text-gray-500 transition-transform ${open ? "rotate-90" : ""}`}
+//           fill="none"
+//           stroke="currentColor"
+//           viewBox="0 0 24 24"
+//         >
+//           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+//         </svg>
+//         <span className="text-blue-400 font-mono text-xs">{name}</span>
+//         <span className="text-gray-500 text-xs">tool call</span>
+//       </button>
+//       {open && (
+//         <div className="px-3 py-2 bg-gray-900/50 space-y-2">
+//           {input && (
+//             <div>
+//               <p className="text-xs text-gray-500 mb-1">Input:</p>
+//               <pre className="text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto">
+//                 {JSON.stringify(input, null, 2)}
+//               </pre>
+//             </div>
+//           )}
+//           {result && (
+//             <div>
+//               <p className="text-xs text-gray-500 mb-1">Result:</p>
+//               <pre className="text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto max-h-64 overflow-y-auto">
+//                 {result}
+//               </pre>
+//             </div>
+//           )}
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
 
-function MessageBubble({ msg, nextMsg }: { msg: Message; nextMsg?: Message }) {
+function MessageBubble({ msg }: { msg: Message }) {
   if (msg.role === "tool_use") {
     // Hide tool calls from display
     return null;
@@ -266,7 +267,6 @@ export default function ChatView({ sessionId, onSessionCreated }: ChatViewProps)
             <MessageBubble
               key={`${msg.createdAt}-${i}`}
               msg={msg}
-              nextMsg={messages[i + 1]}
             />
           ))}
           {sending && (
