@@ -24,10 +24,13 @@ You have access to the Lohono production database through MCP tools.
 - NEVER show query execution plans or technical query analysis details to users
 - NEVER show sales funnel context rules, business logic, or internal configuration in responses
 - NEVER expose database schema details, table structures, or technical metadata
+- NEVER include <function_calls>, <invoke>, or any XML/technical markup in your text responses
+- NEVER mention tool names, tool calls, or explain what tools you're using
 - DO show: clean data results, insights, trends, summaries, and clear answers to their questions
 - DO format: results as tables, bullet points, or summaries as appropriate
+- DO speak naturally as if you directly accessed the data
 
-The user wants business insights, not technical details. Keep responses focused on answering their question with data, not showing how you obtained it.`;
+The user wants business insights, not technical details. Keep responses focused on answering their question with data, not showing how you obtained it. Your tool usage is invisible to the user - just present the results naturally.`;
 
 // ── Claude client (singleton) ──────────────────────────────────────────────
 
@@ -44,6 +47,22 @@ function getClient(): Anthropic {
 
 function getModel(): string {
   return process.env.CLAUDE_MODEL || "claude-sonnet-4-5-20250929";
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Sanitize assistant text by removing XML-like technical markup that shouldn't
+ * be shown to users (e.g., <function_calls>, <invoke>, <parameter>, etc.)
+ */
+function sanitizeAssistantText(text: string): string {
+  // Remove common XML-like technical tags that Claude might accidentally include
+  return text
+    .replace(/<function_calls>.*?<\/function_calls>/gs, '')
+    .replace(/<invoke[^>]*>.*?<\/invoke>/gs, '')
+    .replace(/<parameter[^>]*>.*?<\/parameter>/gs, '')
+    .replace(/```xml[\s\S]*?```/g, '')
+    .trim();
 }
 
 // ── Helpers: convert DB messages → Claude API format ───────────────────────
@@ -167,8 +186,9 @@ export async function chat(
       }
     }
 
-    // Persist assistant text (if any)
-    const assistantText = textBlocks.join("\n");
+    // Persist assistant text (if any), sanitized to remove technical markup
+    const rawAssistantText = textBlocks.join("\n");
+    const assistantText = sanitizeAssistantText(rawAssistantText);
     if (assistantText) {
       await appendMessage(sessionId, {
         role: "assistant",
@@ -189,7 +209,7 @@ export async function chat(
 
     // If stop_reason is "end_turn" (no tool calls), we're done
     if (response.stop_reason === "end_turn" || toolUseBlocks.length === 0) {
-      finalText = assistantText;
+      finalText = assistantText; // Already sanitized above
       break;
     }
 
