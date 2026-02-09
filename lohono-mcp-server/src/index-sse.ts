@@ -1,5 +1,5 @@
 // ── OTel SDK must be imported FIRST ────────────────────────────────────────
-import "./observability/tracing.js";
+import "../../shared/observability/src/tracing.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";

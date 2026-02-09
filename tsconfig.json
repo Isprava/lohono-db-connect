@@ -4,7 +4,7 @@
     "module": "Node16",
     "moduleResolution": "Node16",
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,6 +14,10 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "lohono-mcp-server/src/**/*",
+    "lohono-mcp-client/src/**/*",
+    "shared/observability/src/**/*"
+  ],
+  "exclude": ["node_modules", "dist", "lohono-chat-client"]
 }

@@ -1,5 +1,5 @@
 // ── OTel SDK must be imported FIRST ────────────────────────────────────────
-import "../observability/tracing.js";
+import "../../shared/observability/src/tracing.js";
 
 import pg from "pg";
 import { connectDB, disconnectDB } from "./db.js";
