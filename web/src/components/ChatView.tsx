@@ -205,7 +205,7 @@ function ChatInput({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
-          placeholder="Ask me anything about Lohono data..."
+          placeholder="Ask AIDA anything about your data..."
           disabled={disabled}
           rows={1}
           className="flex-1 bg-transparent text-white text-[15px] resize-none outline-none placeholder-gray-400 max-h-[200px] leading-relaxed"
@@ -315,10 +315,10 @@ export default function ChatView({ sessionId, onSessionCreated }: ChatViewProps)
               </svg>
             </div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent mb-4">
-              Lohono AI Assistant
+              AIDA
             </h1>
             <p className="text-gray-400 text-lg mb-8">
-              Your intelligent database assistant. Ask questions about sales data, bookings, property funnels, and more.
+              Advanced Insights & Decision Acceleration, centralized in-house data insights assistant
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
               <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-4">
