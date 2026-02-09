@@ -39,3 +39,19 @@ body {
 .markdown-content th { @apply border border-gray-700 px-3 py-1 bg-gray-800 text-left font-semibold; }
 .markdown-content td { @apply border border-gray-700 px-3 py-1; }
 .markdown-content blockquote { @apply border-l-4 border-gray-600 pl-4 italic text-gray-400; }
+
+/* Chat animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
