@@ -69,6 +69,11 @@ const GenerateRulesFromRedashInputSchema = z.object({
   intent_keywords: z.array(z.string()).optional(),
 });
 
+const MonthlyFunnelInputSchema = z.object({
+  year: z.number().int().min(2020).max(2030).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+});
+
 // ── Read-only query helper ─────────────────────────────────────────────────
 
 async function executeReadOnlyQuery(sql: string, params?: unknown[]) {
@@ -161,6 +166,24 @@ export const toolDefinitions = [
     inputSchema: {
       type: "object" as const,
       properties: {},
+    },
+  },
+  {
+    name: "get_monthly_funnel",
+    description:
+      "Get the complete sales funnel metrics (Leads, Prospects, Accounts, Sales) for a specific month. If no parameters provided, returns current month data. Returns metrics for the entire month regardless of current day.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        year: {
+          type: "number",
+          description: "Year (e.g. 2026). Defaults to current year if not provided.",
+        },
+        month: {
+          type: "number",
+          description: "Month (1-12). Defaults to current month if not provided.",
+        },
+      },
     },
   },
   {
@@ -437,6 +460,123 @@ export async function handleToolCall(
       const patterns = listQueryPatterns();
       return {
         content: [{ type: "text", text: JSON.stringify(patterns, null, 2) }],
+      };
+    }
+
+    if (name === "get_monthly_funnel") {
+      const { year, month } = MonthlyFunnelInputSchema.parse(args || {});
+      
+      // Use current year/month if not provided
+      const now = new Date();
+      const targetYear = year ?? now.getFullYear();
+      const targetMonth = month ?? now.getMonth() + 1; // JS months are 0-indexed
+      
+      // Calculate first and last day of the month
+      const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+      const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+      const endDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      
+      const sql = `
+        select * FROM
+        (
+        select 'Leads' as metric, sum(leads)::int as count
+        FROM
+        (
+        SELECT count(distinct(development_opportunities.slug)) as leads
+        FROM development_opportunities
+        WHERE (date(enquired_at + interval '330 minutes') between $1 and $2)
+
+        union
+
+        select count(id) as leads2
+        from enquiries
+        WHERE enquiries.vertical='development'
+        and enquiry_type='enquiry'
+        and leadable_id is null
+        and date(enquiries.created_at + interval '5 hours 30 minutes') between $1 and $2
+        ) a
+
+        union 
+
+        select 'Prospects' as metric, count(distinct(slug))
+        FROM
+        (
+        select development_opportunities.slug as slug,
+        stage_histories.updated_at + interval '330 minutes' as moved_to_prospect,development_opportunities.current_stage as current_stage,
+         RANK() OVER (PARTITION BY stage_histories.leadable_id,
+                                    stage_histories.leadable_type
+                                     ORDER BY stage_histories.updated_at ASC) date_rank
+        FROM development_opportunities 
+        inner join stage_histories on development_opportunities.id=stage_histories.leadable_id AND leadable_type='Development::Opportunity'
+        inner join stages on stage_histories.stage_id=stages.id
+        WHERE vertical = 'development' AND code = 'prospect'
+        ) sub_query
+        WHERE date_rank=1
+        and (date(moved_to_prospect + interval '330 minutes') between $1 and $2)
+
+        union 
+
+        select 'Accounts' as metric, count(distinct(slug))
+        FROM
+        (
+        select development_opportunities.slug as slug,
+        stage_histories.updated_at + interval '330 minutes' as moved_to_account,development_opportunities.current_stage as current_stage,
+         RANK() OVER (PARTITION BY stage_histories.leadable_id,
+                                    stage_histories.leadable_type
+                                     ORDER BY stage_histories.updated_at ASC) date_rank
+        FROM development_opportunities 
+        inner join stage_histories on development_opportunities.id=stage_histories.leadable_id AND leadable_type='Development::Opportunity'
+        inner join stages on stage_histories.stage_id=stages.id
+        WHERE vertical = 'development' AND code = 'account'
+        ) sub_query
+        WHERE date_rank=1
+        and (date(moved_to_account + interval '330 minutes') between $1 and $2)
+
+        union 
+
+        SELECT 'Sales' as metric, count(slug)
+        FROM
+          (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+                  rank() over(PARTITION BY activities.leadable_id
+                              ORDER BY tasks.performed_at + interval '5 hours 30 minutes') AS ranking,
+                  tasks.rating AS rating, development_opportunities.source as source, development_opportunities.slug
+           FROM tasks
+           inner join activities on tasks.id= activities.feedable_id
+           INNER JOIN development_opportunities ON development_opportunities.id=activities.leadable_id
+           where activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
+           AND tasks.rating = 'maal_laao'
+           and (development_opportunities.slug!= 'd-0010K00001mCaxRQAS' and development_opportunities.slug!='d-0012800001IqdMOAAZ'
+               and development_opportunities.slug!= 'd-0012800001Y94DuAAJ'and development_opportunities.slug!= 'd-0012800001Y947rAAB' 
+               and development_opportunities.slug!='d-00Q2800000cjE3iEAE'
+               )
+         ) x
+        WHERE ranking = 1
+        and date(resolved_at_date_ist + interval '330 minutes') between $1 and $2
+        ) query 
+        order by case when metric='Leads' then '1'
+                      when metric='Prospects' then '2'
+                      when metric='Accounts' then '3'
+                      else metric end
+      `;
+      
+      const result = await executeReadOnlyQuery(sql, [startDate, endDate]);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              { 
+                sql, 
+                params: [startDate, endDate], 
+                period: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+                rowCount: result.rowCount, 
+                rows: result.rows 
+              },
+              null,
+              2
+            ),
+          },
+        ],
       };
     }
 

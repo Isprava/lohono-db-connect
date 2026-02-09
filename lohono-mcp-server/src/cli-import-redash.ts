@@ -246,8 +246,9 @@ function updateToolsFile(
   if (dryRun) {
     console.log("\n📄 [DRY RUN] Would add to lohono-mcp-server/src/tools.ts:");
     for (const result of results) {
-      console.log(`  + Tool definition for '${result.output.tool_definition.name}'`);
-      console.log(`  + Handler for '${result.output.tool_definition.name}'`);
+      const toolDef = result.output.tool_definition as { name: string };
+      console.log(`  + Tool definition for '${toolDef.name}'`);
+      console.log(`  + Handler for '${toolDef.name}'`);
     }
     console.log("\n⚠️  Note: Manual integration required for tool definitions and handlers");
     console.log("   The tool will show you the code to add, but won't modify tools.ts automatically");
