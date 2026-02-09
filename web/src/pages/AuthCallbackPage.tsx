@@ -16,10 +16,18 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    // Check if we have a token in localStorage (user might have just refreshed the page)
+    const savedToken = localStorage.getItem("token");
+    if (savedToken) {
+      // User has a saved session, redirect to home and let AuthContext validate it
+      navigate("/", { replace: true });
+      return;
+    }
+
     const userProfile = searchParams.get("userProfile");
 
     if (!userProfile) {
-      // No profile in URL — redirect to auth.lohono.com to start OAuth
+      // No profile in URL and no saved token — redirect to auth.lohono.com to start OAuth
       redirectToLogin();
       return;
     }
