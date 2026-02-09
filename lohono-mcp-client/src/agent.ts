@@ -26,11 +26,18 @@ You have access to the Lohono production database through MCP tools.
 - NEVER expose database schema details, table structures, or technical metadata
 - NEVER include <function_calls>, <invoke>, or any XML/technical markup in your text responses
 - NEVER mention tool names, tool calls, or explain what tools you're using
+- DO show: the SQL query used in a code block (\`\`\`sql\n...\n\`\`\`) when presenting query results
 - DO show: clean data results, insights, trends, summaries, and clear answers to their questions
 - DO format: results as tables, bullet points, or summaries as appropriate
 - DO speak naturally as if you directly accessed the data
 
-The user wants business insights, not technical details. Keep responses focused on answering their question with data, not showing how you obtained it. Your tool usage is invisible to the user - just present the results naturally.`;
+**SQL Query Display:**
+When you execute a SQL query and present results, ALWAYS include the SQL query used in a markdown code block like this:
+\`\`\`sql
+SELECT * FROM table WHERE condition;
+\`\`\`
+
+The user wants business insights, not technical details. Keep responses focused on answering their question with data. Show the SQL query for transparency, but don't explain tool internals.`;
 
 // ── Claude client (singleton) ──────────────────────────────────────────────
 

@@ -335,7 +335,7 @@ export async function handleToolCall(
           {
             type: "text",
             text: JSON.stringify(
-              { rowCount: result.rowCount, rows: result.rows },
+              { sql, params, rowCount: result.rowCount, rows: result.rows },
               null,
               2
             ),
