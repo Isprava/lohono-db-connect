@@ -11,6 +11,7 @@
     "start": "node dist/lohono-mcp-server/src/index.js",
     "start:sse": "node dist/lohono-mcp-server/src/index-sse.js",
     "generate": "tsx lohono-mcp-server/src/cli-generate.ts",
+    "import-redash": "tsx lohono-mcp-server/src/cli-import-redash.ts",
     "dev:client": "tsx lohono-mcp-client/src/index.ts",
     "start:client": "node dist/lohono-mcp-client/src/index.js",
     "dev:chat": "npm --prefix lohono-chat-client run dev",
