@@ -519,7 +519,7 @@ The OAuth credentials need to be configured in your application. Check where you
 
 ```bash
 # Check if web app has environment config
-ls web/.env* web/src/config*
+ls lohono-chat-client/.env* lohono-chat-client/src/config*
 
 # You may need to add these to .env or rebuild the web container with the credentials
 ```

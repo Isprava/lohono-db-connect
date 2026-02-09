@@ -441,7 +441,7 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 │       ├── spans.ts            # Custom span helpers (MCP, DB, Claude)
 │       ├── sanitize.ts         # PII masking and data sanitization
 │       └── index.ts            # Barrel export
-├── web/                        # React frontend (Vite + Tailwind)
+├── lohono-chat-client/                        # React frontend (Vite + Tailwind)
 ├── config/                     # ACL and business rule YAML configs
 ├── signoz/                     # SigNoz internal configs
 ├── db/                         # Database backups
@@ -452,7 +452,7 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 ├── otel-collector-config.yaml  # OTel Collector pipeline config
 ├── Dockerfile                  # MCP Server image
 ├── Dockerfile.client           # MCP Client image
-├── Dockerfile.web              # Web frontend image
+├── Dockerfile.chat-client              # Web frontend image
 ├── nginx.conf                  # nginx config for web SPA
 ├── Makefile                    # All operational commands
 └── .env.example                # Environment variable template

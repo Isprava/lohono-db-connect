@@ -116,7 +116,7 @@ make deploy
 
 ### Local Mode
 
-**Vite configuration** (`web/vite.config.ts`):
+**Vite configuration** (`lohono-chat-client/vite.config.ts`):
 ```typescript
 export default defineConfig({
   server: {

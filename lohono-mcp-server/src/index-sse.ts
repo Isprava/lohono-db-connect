@@ -18,7 +18,7 @@ import {
   logError,
   withMCPServerToolSpan,
   startSSESessionSpan,
-} from "./observability/index.js";
+} from "../../shared/observability/src/index.js";
 
 // Load ACL config at startup
 loadAclConfig();

@@ -9,7 +9,8 @@ RUN npm ci
 
 # Copy source and build
 COPY tsconfig.json ./
-COPY src/ ./src/
+COPY lohono-mcp-server/src/ ./lohono-mcp-server/src/
+COPY shared/ ./shared/
 RUN npm run build
 
 # ── Stage 2: Production ────────────────────────────────────────────────────
@@ -45,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
 
 # Default: run SSE server (can be overridden in docker-compose)
-CMD ["node", "dist/index-sse.js"]
+CMD ["node", "dist/lohono-mcp-server/src/index-sse.js"]

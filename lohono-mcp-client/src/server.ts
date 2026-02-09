@@ -19,7 +19,7 @@ import {
   errorLoggingMiddleware,
   logInfo,
   logError,
-} from "../observability/index.js";
+} from "../../shared/observability/src/index.js";
 
 // ── Extend Express Request ─────────────────────────────────────────────────
 

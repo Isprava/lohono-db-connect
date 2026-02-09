@@ -108,12 +108,12 @@ services:
     ports:
       - "${CLIENT_PORT:-3001}:3001"
 
-  # ── Web Frontend (React SPA via nginx) ──────────────────────────────────
-  web:
+  # ── Chat Client (React SPA via nginx) ───────────────────────────────────
+  chat-client:
     build:
       context: .
-      dockerfile: Dockerfile.web
-    container_name: lohono-web
+      dockerfile: Dockerfile.chat-client
+    container_name: lohono-chat-client
     restart: unless-stopped
     depends_on:
       mcp-client:

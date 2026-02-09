@@ -4,7 +4,7 @@
 
 COMPOSE     := docker compose
 COMPOSE_OBS := docker compose -f docker-compose.observability.yml
-SERVICES    := postgres mongo mcp-server mcp-client web
+SERVICES    := postgres mongo mcp-server mcp-client chat-client
 
 # Default env file
 ENV_FILE := .env
@@ -77,9 +77,9 @@ mcp-server: env ## Start PostgreSQL + MCP server
 mcp-client: env ## Start databases + MCP server + client
 	$(COMPOSE) up -d postgres mongo mcp-server mcp-client
 
-.PHONY: web
-web: env ## Start everything including web frontend
-	$(COMPOSE) up -d postgres mongo mcp-server mcp-client web
+.PHONY: chat-client
+chat-client: env ## Start everything including chat-client frontend
+	$(COMPOSE) up -d postgres mongo mcp-server mcp-client chat-client
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 
@@ -103,9 +103,9 @@ logs-mcp-server: ## Tail MCP server logs
 logs-mcp-client: ## Tail MCP client logs
 	$(COMPOSE) logs -f mcp-client
 
-.PHONY: logs-web
-logs-web: ## Tail web frontend logs
-	$(COMPOSE) logs -f web
+.PHONY: logs-chat-client
+logs-chat-client: ## Tail chat-client frontend logs
+	$(COMPOSE) logs -f chat-client
 
 # ── Database: Backup & Restore ────────────────────────────────────────────
 # Backups are stored in ./db/ and mounted at /backups in the postgres container.
@@ -145,9 +145,9 @@ mongo-shell: ## Open a mongosh shell in the mongo container
 # ── Development (local, no Docker) ────────────────────────────────────────
 
 .PHONY: dev-install
-dev-install: ## Install all npm dependencies (root + web)
+dev-install: ## Install all npm dependencies (root + chat-client)
 	npm install
-	npm --prefix web install
+	npm --prefix chat-client install
 
 .PHONY: dev-server
 dev-server: ## Run MCP SSE server locally (requires PG)
@@ -157,9 +157,9 @@ dev-server: ## Run MCP SSE server locally (requires PG)
 dev-client: ## Run MCP client API locally (requires PG + Mongo + MCP server)
 	npx tsx src/client/index.ts
 
-.PHONY: dev-web
-dev-web: ## Run web frontend dev server (Vite, port 8080)
-	npm --prefix web run dev
+.PHONY: dev-chat-client
+dev-chat-client: ## Run chat-client frontend dev server (Vite, port 8080)
+	npm --prefix chat-client run dev
 
 .PHONY: dev
 dev: ## Print instructions for local dev (run each in a separate terminal)
@@ -167,7 +167,7 @@ dev: ## Print instructions for local dev (run each in a separate terminal)
 	@echo "  1. make postgres mongo          # databases"
 	@echo "  2. make dev-server              # MCP SSE server  (port 3000)"
 	@echo "  3. make dev-client              # Client REST API (port 3001)"
-	@echo "  4. make dev-web                 # Web UI          (port 8080)"
+	@echo "  4. make dev-chat-client                 # Web UI          (port 8080)"
 
 # ── Deployment ────────────────────────────────────────────────────────────
 

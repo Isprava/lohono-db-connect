@@ -4,15 +4,15 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies (layer caching)
-COPY web/package.json web/package-lock.json ./
+COPY lohono-chat-client/package.json lohono-chat-client/package-lock.json ./
 RUN npm ci
 
 # Copy source and build
-COPY web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json ./
-COPY web/vite.config.ts ./
-COPY web/index.html ./
-COPY web/src/ ./src/
-COPY web/public/ ./public/
+COPY lohono-chat-client/tsconfig.json lohono-chat-client/tsconfig.app.json lohono-chat-client/tsconfig.node.json ./
+COPY lohono-chat-client/vite.config.ts ./
+COPY lohono-chat-client/index.html ./
+COPY lohono-chat-client/src/ ./src/
+COPY lohono-chat-client/public/ ./public/
 RUN npm run build
 
 # ── Stage 2: Serve with nginx ──────────────────────────────────────────────

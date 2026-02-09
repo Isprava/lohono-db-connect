@@ -6,7 +6,7 @@ import { connectDB, disconnectDB } from "./db.js";
 import { connectMCP, disconnectMCP } from "./mcp-bridge.js";
 import { initPgPool } from "./auth.js";
 import { app } from "./server.js";
-import { logInfo, logError } from "../observability/index.js";
+import { logInfo, logError } from "../../shared/observability/src/index.js";
 
 const { Pool } = pg;
 

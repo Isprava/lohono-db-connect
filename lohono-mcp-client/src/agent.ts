@@ -6,7 +6,7 @@ import {
   updateSessionTitle,
   type Message as DbMessage,
 } from "./db.js";
-import { withClaudeSpan, withSpan, logInfo, logError } from "../observability/index.js";
+import { withClaudeSpan, withSpan, logInfo, logError } from "../../shared/observability/src/index.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 

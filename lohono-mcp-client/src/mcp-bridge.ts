@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type Anthropic from "@anthropic-ai/sdk";
-import { withMCPToolSpan, logInfo, logError } from "../observability/index.js";
+import { withMCPToolSpan, logInfo, logError } from "../../shared/observability/src/index.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

@@ -9,7 +9,8 @@ RUN npm ci
 
 # Copy source and build
 COPY tsconfig.json ./
-COPY src/ ./src/
+COPY lohono-mcp-client/src/ ./lohono-mcp-client/src/
+COPY shared/ ./shared/
 RUN npm run build
 
 # ── Stage 2: Production ────────────────────────────────────────────────────
@@ -38,4 +39,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:3001/api/health || exit 1
 
-CMD ["node", "dist/client/index.js"]
+CMD ["node", "dist/lohono-mcp-client/src/index.js"]
