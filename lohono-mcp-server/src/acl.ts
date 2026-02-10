@@ -23,6 +23,7 @@ export interface AclConfig {
   default_policy: "open" | "deny";
   superuser_acls: string[];
   public_tools: string[];
+  disabled_tools: string[];
   tool_acls: Record<string, string[]>;
 }
 
@@ -65,6 +66,7 @@ export function loadAclConfig(configPath?: string): AclConfig {
       default_policy: "open",
       superuser_acls: [],
       public_tools: [],
+      disabled_tools: [],
       tool_acls: {},
     };
     return aclConfig;
@@ -76,6 +78,7 @@ export function loadAclConfig(configPath?: string): AclConfig {
     default_policy: (raw.default_policy as "open" | "deny") || "deny",
     superuser_acls: (raw.superuser_acls as string[]) || [],
     public_tools: (raw.public_tools as string[]) || [],
+    disabled_tools: (raw.disabled_tools as string[]) || [],
     tool_acls: (raw.tool_acls as Record<string, string[]>) || {},
   };
 
@@ -152,12 +155,21 @@ export async function checkToolAccess(
 ): Promise<AclCheckResult> {
   const config = loadAclConfig();
 
-  // 1. Public tool — no auth needed
+  // 1. Disabled tool — blocked for everyone (including superusers)
+  if (config.disabled_tools.includes(toolName)) {
+    return {
+      allowed: false,
+      reason: `Tool "${toolName}" is disabled. Use specialized tools instead (e.g., get_sales_funnel for sales metrics).`,
+      user_email: userEmail,
+    };
+  }
+
+  // 2. Public tool — no auth needed
   if (config.public_tools.includes(toolName)) {
     return { allowed: true, reason: "Public tool", user_email: userEmail };
   }
 
-  // 2. No email provided
+  // 3. No email provided
   if (!userEmail) {
     return {
       allowed: false,
@@ -166,7 +178,7 @@ export async function checkToolAccess(
     };
   }
 
-  // 3. Resolve user from DB
+  // 4. Resolve user from DB
   const user = await resolveUserAcls(userEmail, pool);
 
   if (!user) {
@@ -186,7 +198,7 @@ export async function checkToolAccess(
     };
   }
 
-  // 4. Superuser check
+  // 5. Superuser check (but disabled_tools still blocked)
   const hasSuperuser = user.acls.some((a) => config.superuser_acls.includes(a));
   if (hasSuperuser) {
     return {
@@ -197,7 +209,7 @@ export async function checkToolAccess(
     };
   }
 
-  // 5. Per-tool ACL check
+  // 6. Per-tool ACL check
   const requiredAcls = config.tool_acls[toolName];
 
   if (!requiredAcls) {
@@ -251,24 +263,27 @@ export async function filterToolsByAccess(
 ): Promise<{ name: string; [key: string]: unknown }[]> {
   const config = loadAclConfig();
 
+  // Filter out disabled tools first (no one can see them)
+  const enabledTools = tools.filter((t) => !config.disabled_tools.includes(t.name));
+
   // No email — return only public tools
   if (!userEmail) {
-    return tools.filter((t) => config.public_tools.includes(t.name));
+    return enabledTools.filter((t) => config.public_tools.includes(t.name));
   }
 
   // Resolve user
   const user = await resolveUserAcls(userEmail, pool);
 
   if (!user || !user.active) {
-    return tools.filter((t) => config.public_tools.includes(t.name));
+    return enabledTools.filter((t) => config.public_tools.includes(t.name));
   }
 
-  // Superuser — everything
+  // Superuser — all enabled tools (disabled tools still hidden)
   const hasSuperuser = user.acls.some((a) => config.superuser_acls.includes(a));
-  if (hasSuperuser) return tools;
+  if (hasSuperuser) return enabledTools;
 
   // Filter per-tool
-  return tools.filter((t) => {
+  return enabledTools.filter((t) => {
     if (config.public_tools.includes(t.name)) return true;
 
     const requiredAcls = config.tool_acls[t.name];

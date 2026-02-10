@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getToolsForClaude, callTool } from "./mcp-bridge.js";
+import { getToolsForClaude, getToolsForUser, callTool } from "./mcp-bridge.js";
 import {
   appendMessage,
   getMessages,
@@ -16,8 +16,8 @@ const SYSTEM_PROMPT = `You are an expert data analyst assistant for Lohono Stays
 You have access to the Lohono production database through MCP tools.
 
 **Query Process:**
-1. Before writing SQL queries, use get_sales_funnel_context or classify_sales_intent to understand business rules
-2. Execute queries using the query tool
+1. For sales funnel metrics (Leads, Prospects, Accounts, Sales), ALWAYS use the get_sales_funnel tool
+2. For schema exploration, use catalog tools (get_tables_summary, search_tables, get_table_schema, etc.)
 3. Present results to users in a clear, professional format
 
 **IMPORTANT - User-Facing Responses:**
@@ -142,10 +142,11 @@ export interface ChatResult {
 
 export async function chat(
   sessionId: string,
-  userMessage: string
+  userMessage: string,
+  userEmail?: string
 ): Promise<ChatResult> {
   const client = getClient();
-  const tools = getToolsForClaude();
+  const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
 
   // 1. Persist user message
   await appendMessage(sessionId, { role: "user", content: userMessage });
@@ -226,7 +227,8 @@ export async function chat(
       try {
         resultText = await callTool(
           tu.name,
-          tu.input as Record<string, unknown>
+          tu.input as Record<string, unknown>,
+          userEmail
         );
       } catch (err) {
         resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;

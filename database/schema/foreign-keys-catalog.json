@@ -1,0 +1,455 @@
+{
+  "metadata": {
+    "database": "lohono_api_production",
+    "schema": "public",
+    "generated_at": "2026-02-09T14:14:44Z",
+    "version": "1.0.0",
+    "purpose": "Document foreign key relationships and schema intelligence for sales funnel"
+  },
+  "foreign_keys": [
+    {
+      "table": "development_opportunities",
+      "column": "agent_id",
+      "references_table": "agents",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Agent who brought this opportunity",
+      "business_context": "Links opportunity to the agent/channel partner",
+      "join_example": "LEFT JOIN agents ON agents.id = development_opportunities.agent_id"
+    },
+    {
+      "table": "development_opportunities",
+      "column": "poc_exec_id",
+      "references_table": "staffs",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Point of contact executive assigned to this opportunity",
+      "business_context": "Primary staff member responsible for managing the opportunity",
+      "join_example": "LEFT JOIN staffs AS poc_exec ON poc_exec.id = development_opportunities.poc_exec_id",
+      "common_alias": "poc_exec"
+    },
+    {
+      "table": "development_opportunities",
+      "column": "poc_head_id",
+      "references_table": "staffs",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Point of contact manager/head overseeing this opportunity",
+      "business_context": "Manager or team lead responsible for the opportunity",
+      "join_example": "LEFT JOIN staffs AS poc_head ON poc_head.id = development_opportunities.poc_head_id",
+      "common_alias": "poc_head"
+    },
+    {
+      "table": "development_opportunities",
+      "column": "current_stage_id",
+      "references_table": "stages",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Current stage in the sales funnel",
+      "business_context": "Tracks which stage (lead, prospect, account) the opportunity is currently in",
+      "join_example": "LEFT JOIN stages ON stages.id = development_opportunities.current_stage_id",
+      "note": "Also available as varchar field 'current_stage' for simpler queries"
+    },
+    {
+      "table": "enquiries",
+      "column": "leadable_id",
+      "references_table": "development_opportunities",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "polymorphic": true,
+      "polymorphic_type_column": "leadable_type",
+      "polymorphic_type_value": "Development::Opportunity",
+      "description": "Links enquiry to opportunity when converted",
+      "business_context": {
+        "when_null": "Enquiry is standalone (counts as a lead)",
+        "when_not_null": "Enquiry has been converted to opportunity (no longer counted as separate lead)"
+      },
+      "join_example": "LEFT JOIN development_opportunities ON development_opportunities.id = enquiries.leadable_id AND enquiries.leadable_type = 'Development::Opportunity'"
+    },
+    {
+      "table": "enquiries",
+      "column": "agent_id",
+      "references_table": "agents",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Agent associated with this enquiry",
+      "business_context": "Tracks which agent generated the enquiry",
+      "join_example": "LEFT JOIN agents ON agents.id = enquiries.agent_id"
+    },
+    {
+      "table": "enquiries",
+      "column": "contact_id",
+      "references_table": "contacts",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Contact person for this enquiry",
+      "business_context": "Links enquiry to the customer contact record",
+      "join_example": "LEFT JOIN contacts ON contacts.id = enquiries.contact_id"
+    },
+    {
+      "table": "agents",
+      "column": "poc_exec_id",
+      "references_table": "staffs",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "POC executive for this agent",
+      "business_context": "Staff member who manages relationship with this agent",
+      "join_example": "LEFT JOIN staffs ON staffs.id = agents.poc_exec_id"
+    },
+    {
+      "table": "agents",
+      "column": "poc_head_id",
+      "references_table": "staffs",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "POC head for this agent",
+      "business_context": "Manager overseeing the agent relationship",
+      "join_example": "LEFT JOIN staffs ON staffs.id = agents.poc_head_id"
+    },
+    {
+      "table": "activities",
+      "column": "leadable_id",
+      "references_table": "development_opportunities",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "polymorphic": true,
+      "polymorphic_type_column": "leadable_type",
+      "polymorphic_type_value": "Development::Opportunity",
+      "description": "The lead/opportunity this activity belongs to",
+      "business_context": "Links activities to the opportunity they are performed on",
+      "join_example": "INNER JOIN activities ON activities.leadable_id = development_opportunities.id AND activities.leadable_type = 'Development::Opportunity'"
+    },
+    {
+      "table": "activities",
+      "column": "feedable_id",
+      "references_table": "tasks",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "polymorphic": true,
+      "polymorphic_type_column": "feedable_type",
+      "polymorphic_type_value": "Task",
+      "description": "The actual activity (task, note, document, etc.)",
+      "business_context": "Links to the specific type of activity being performed",
+      "join_example": "INNER JOIN tasks ON tasks.id = activities.feedable_id AND activities.feedable_type = 'Task'",
+      "other_possible_types": ["Note", "Document", "Email"]
+    },
+    {
+      "table": "tasks",
+      "column": "medium_id",
+      "references_table": "medium",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "Medium of communication (Meeting, Call, Email, etc.)",
+      "business_context": "Categorizes the type of task/communication",
+      "join_example": "LEFT JOIN medium ON medium.id = tasks.medium_id",
+      "common_values": ["Meeting", "Call", "Email", "Viewing", "Site Visit", "Goa Viewing", "Alibaug Viewing", "Coonoor Viewing"]
+    },
+    {
+      "table": "stage_histories",
+      "column": "leadable_id",
+      "references_table": "development_opportunities",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "polymorphic": true,
+      "polymorphic_type_column": "leadable_type",
+      "polymorphic_type_value": "Development::Opportunity",
+      "description": "The opportunity that changed stages",
+      "business_context": "Tracks stage progression history for opportunities",
+      "join_example": "INNER JOIN stage_histories ON stage_histories.leadable_id = development_opportunities.id AND stage_histories.leadable_type = 'Development::Opportunity'"
+    },
+    {
+      "table": "stage_histories",
+      "column": "stage_id",
+      "references_table": "stages",
+      "references_column": "id",
+      "relationship_type": "many_to_one",
+      "cardinality": "N:1",
+      "nullable": true,
+      "description": "The stage that was entered",
+      "business_context": "Links to the stage definition (lead, prospect, account, etc.)",
+      "join_example": "INNER JOIN stages ON stages.id = stage_histories.stage_id"
+    }
+  ],
+  "inverse_relationships": [
+    {
+      "table": "development_opportunities",
+      "has_many": "activities",
+      "through_column": "leadable_id",
+      "polymorphic_type": "Development::Opportunity",
+      "description": "All activities logged for this opportunity",
+      "business_context": "One opportunity can have many activities (tasks, notes, etc.)"
+    },
+    {
+      "table": "development_opportunities",
+      "has_many": "stage_histories",
+      "through_column": "leadable_id",
+      "polymorphic_type": "Development::Opportunity",
+      "description": "Stage progression history",
+      "business_context": "Tracks all stage changes for an opportunity over time"
+    },
+    {
+      "table": "development_opportunities",
+      "has_many": "enquiries",
+      "through_column": "leadable_id",
+      "polymorphic_type": "Development::Opportunity",
+      "description": "Enquiries that were converted to this opportunity",
+      "business_context": "Shows which enquiries became this opportunity"
+    },
+    {
+      "table": "agents",
+      "has_many": "development_opportunities",
+      "through_column": "agent_id",
+      "description": "Opportunities brought by this agent",
+      "business_context": "One agent can bring multiple opportunities"
+    },
+    {
+      "table": "agents",
+      "has_many": "enquiries",
+      "through_column": "agent_id",
+      "description": "Enquiries from this agent",
+      "business_context": "One agent can generate multiple enquiries"
+    },
+    {
+      "table": "staffs",
+      "has_many": "development_opportunities",
+      "through_column": "poc_exec_id",
+      "alias": "opportunities_as_exec",
+      "description": "Opportunities where staff is POC executive",
+      "business_context": "One staff member can manage multiple opportunities as executive"
+    },
+    {
+      "table": "staffs",
+      "has_many": "development_opportunities",
+      "through_column": "poc_head_id",
+      "alias": "opportunities_as_head",
+      "description": "Opportunities where staff is POC head",
+      "business_context": "One staff member can oversee multiple opportunities as manager"
+    },
+    {
+      "table": "staffs",
+      "has_many": "agents",
+      "through_column": "poc_exec_id",
+      "alias": "agents_as_exec",
+      "description": "Agents managed by this staff member as executive",
+      "business_context": "One staff member can manage multiple agent relationships"
+    },
+    {
+      "table": "staffs",
+      "has_many": "agents",
+      "through_column": "poc_head_id",
+      "alias": "agents_as_head",
+      "description": "Agents managed by this staff member as head",
+      "business_context": "One manager can oversee multiple agent relationships"
+    },
+    {
+      "table": "stages",
+      "has_many": "development_opportunities",
+      "through_column": "current_stage_id",
+      "description": "Opportunities currently in this stage",
+      "business_context": "One stage can have multiple opportunities"
+    },
+    {
+      "table": "stages",
+      "has_many": "stage_histories",
+      "through_column": "stage_id",
+      "description": "All stage history entries for this stage",
+      "business_context": "Tracks all times opportunities entered this stage"
+    },
+    {
+      "table": "medium",
+      "has_many": "tasks",
+      "through_column": "medium_id",
+      "description": "All tasks using this communication medium",
+      "business_context": "One medium type (e.g., Meeting) can have many tasks"
+    },
+    {
+      "table": "tasks",
+      "has_many": "activities",
+      "through_column": "feedable_id",
+      "polymorphic_type": "Task",
+      "description": "Links tasks to opportunities via activities",
+      "business_context": "One task can be linked to multiple opportunities through activities"
+    }
+  ],
+  "polymorphic_relationships": [
+    {
+      "name": "leadable",
+      "description": "Points to any 'leadable' entity (usually Development::Opportunity)",
+      "type_column": "leadable_type",
+      "id_column": "leadable_id",
+      "used_in_tables": ["enquiries", "activities", "stage_histories"],
+      "common_types": ["Development::Opportunity", "Property::Opportunity"],
+      "join_pattern": "ON table.leadable_id = target.id AND table.leadable_type = 'Development::Opportunity'"
+    },
+    {
+      "name": "feedable",
+      "description": "Points to any 'feedable' entity (tasks, notes, documents, etc.)",
+      "type_column": "feedable_type",
+      "id_column": "feedable_id",
+      "used_in_tables": ["activities"],
+      "common_types": ["Task", "Note", "Document", "Email"],
+      "join_pattern": "ON activities.feedable_id = target.id AND activities.feedable_type = 'Task'"
+    }
+  ],
+  "key_tables_summary": {
+    "development_opportunities": {
+      "primary_key": "id",
+      "unique_identifier": "slug",
+      "description": "Main sales opportunities table",
+      "foreign_keys_count": 4,
+      "inverse_relationships_count": 3,
+      "funnel_timestamps": {
+        "enquired_at": "Lead stage",
+        "lead_completed_at": "Prospect stage",
+        "prospect_completed_at": "Account stage",
+        "maal_laao_at": "Sale stage"
+      }
+    },
+    "enquiries": {
+      "primary_key": "id",
+      "description": "Customer enquiries (standalone or linked to opportunities)",
+      "foreign_keys_count": 3,
+      "key_logic": "leadable_id IS NULL means standalone lead"
+    },
+    "agents": {
+      "primary_key": "id",
+      "unique_identifier": "slug",
+      "description": "Agents/channel partners who bring business",
+      "foreign_keys_count": 2,
+      "inverse_relationships_count": 2
+    },
+    "staffs": {
+      "primary_key": "id",
+      "unique_identifier": "handle",
+      "description": "Staff members (executives, managers)",
+      "foreign_keys_count": 0,
+      "inverse_relationships_count": 4,
+      "key_field": "source_region (north/south)"
+    },
+    "activities": {
+      "primary_key": "id",
+      "description": "Activity feed - polymorphic join table",
+      "foreign_keys_count": 2,
+      "polymorphic_keys": 2,
+      "purpose": "Links opportunities to their activities (tasks, notes, etc.)"
+    },
+    "tasks": {
+      "primary_key": "id",
+      "description": "Tasks/activities performed on opportunities",
+      "foreign_keys_count": 1,
+      "key_fields": {
+        "performed_at": "When task was performed",
+        "rating": "Task outcome (maal_laao, closed, etc.)",
+        "medium_id": "Type of communication"
+      }
+    },
+    "medium": {
+      "primary_key": "id",
+      "description": "Communication medium lookup table",
+      "type": "lookup/reference",
+      "common_values": ["Meeting", "Call", "Email", "Viewing", "Site Visit"]
+    },
+    "stages": {
+      "primary_key": "id",
+      "description": "Funnel stage definitions",
+      "type": "lookup/reference",
+      "key_fields": {
+        "code": "Stage code (lead, prospect, account)",
+        "vertical": "Business vertical (development, property)",
+        "name": "Display name"
+      }
+    },
+    "stage_histories": {
+      "primary_key": "id",
+      "description": "History of stage changes",
+      "foreign_keys_count": 2,
+      "polymorphic_keys": 1,
+      "purpose": "Track when opportunities move between stages"
+    }
+  },
+  "common_join_patterns": {
+    "opportunities_with_agent": {
+      "description": "Get opportunities with agent information",
+      "sql": "FROM development_opportunities LEFT JOIN agents ON agents.id = development_opportunities.agent_id",
+      "use_case": "Analysis by agent/channel partner"
+    },
+    "opportunities_with_poc": {
+      "description": "Get opportunities with POC staff details",
+      "sql": "FROM development_opportunities LEFT JOIN staffs AS poc_exec ON poc_exec.id = development_opportunities.poc_exec_id LEFT JOIN staffs AS poc_head ON poc_head.id = development_opportunities.poc_head_id",
+      "use_case": "Analysis by sales team member or region"
+    },
+    "opportunities_with_tasks": {
+      "description": "Get all tasks for opportunities",
+      "sql": "FROM development_opportunities INNER JOIN activities ON activities.leadable_id = development_opportunities.id AND activities.leadable_type = 'Development::Opportunity' INNER JOIN tasks ON tasks.id = activities.feedable_id AND activities.feedable_type = 'Task'",
+      "use_case": "Activity tracking, meetings, viewings"
+    },
+    "opportunities_with_stage_history": {
+      "description": "Get stage progression history",
+      "sql": "FROM development_opportunities INNER JOIN stage_histories ON stage_histories.leadable_id = development_opportunities.id AND stage_histories.leadable_type = 'Development::Opportunity' INNER JOIN stages ON stages.id = stage_histories.stage_id",
+      "use_case": "Track when opportunities moved to prospect or account stage"
+    },
+    "enquiries_with_conversion": {
+      "description": "Check if enquiries were converted to opportunities",
+      "sql": "FROM enquiries LEFT JOIN development_opportunities ON development_opportunities.id = enquiries.leadable_id AND enquiries.leadable_type = 'Development::Opportunity'",
+      "use_case": "Conversion analysis, standalone vs converted leads"
+    }
+  },
+  "business_rules": {
+    "lead_counting": {
+      "opportunities": {
+        "condition": "enquired_at IS NOT NULL",
+        "exclusions": [
+          "slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')",
+          "source != 'DnB'",
+          "status != 'trash'"
+        ]
+      },
+      "enquiries": {
+        "condition": "vertical = 'development' AND enquiry_type = 'enquiry' AND leadable_id IS NULL",
+        "exclusions": ["is_trash != TRUE"]
+      },
+      "combined": "opportunities_count + enquiries_count"
+    },
+    "funnel_progression": {
+      "timestamps": [
+        "enquired_at (Lead)",
+        "lead_completed_at (Prospect)",
+        "prospect_completed_at (Account)",
+        "maal_laao_at (Sale)"
+      ],
+      "validation": "Each timestamp should be >= previous timestamp"
+    },
+    "timezone_conversion": {
+      "offset": "IST = UTC + 5:30 hours",
+      "sql_format_1": "timestamp + INTERVAL '330 minutes'",
+      "sql_format_2": "timestamp + INTERVAL '5 hours 30 minutes'",
+      "note": "Use one format consistently per query"
+    }
+  }
+}

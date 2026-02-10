@@ -99,15 +99,30 @@ interface KeywordMapping {
 
 const RULES_PATH =
   process.env.SALES_FUNNEL_RULES_PATH ||
-  "/app/config/sales_funnel_rules_v2.yml";
+  "/app/database/config/sales_funnel_rules_v2.yml";
 
 let _rules: SalesFunnelRules | null = null;
 
 export function loadRules(): SalesFunnelRules {
   if (_rules) return _rules;
+  
+  if (!fs.existsSync(RULES_PATH)) {
+    throw new Error(
+      `Sales funnel rules not found at ${RULES_PATH}. ` +
+      `Set SALES_FUNNEL_RULES_PATH environment variable or place the file at the default location.`
+    );
+  }
+  
   const raw = fs.readFileSync(RULES_PATH, "utf-8");
   _rules = yaml.load(raw) as SalesFunnelRules;
   return _rules;
+}
+
+/**
+ * Check if sales funnel rules are available.
+ */
+export function hasRules(): boolean {
+  return fs.existsSync(RULES_PATH);
 }
 
 // ── Context helpers ────────────────────────────────────────────────────────

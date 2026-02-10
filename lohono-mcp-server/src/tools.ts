@@ -1,11 +1,17 @@
 import { z } from "zod";
 import pg from "pg";
 import {
-  getFullContext,
-  classifyIntent,
-  getQueryTemplate,
-  listQueryPatterns,
-} from "./schema-rules.js";
+  loadDatabaseCatalog,
+  loadForeignKeysCatalog,
+  getTableDefinition,
+  searchTables,
+  getTableRelationships,
+  getTablesSummary,
+  getSchemaContext,
+  findTablesByColumn,
+  getRelationshipChain,
+  getCatalogMetadata,
+} from "./database-catalog.js";
 import { analyzeQuery } from "./query-analyzer.js";
 import { generateRules } from "./rule-generator.js";
 import { RedashClient, parseQueryIds } from "./redash-client.js";
@@ -39,14 +45,6 @@ const ListTablesInputSchema = z.object({
   schema: z.string().optional().default("public"),
 });
 
-const ClassifyIntentInputSchema = z.object({
-  question: z.string().min(1, "Question cannot be empty"),
-});
-
-const GetQueryTemplateInputSchema = z.object({
-  pattern_name: z.string().min(1, "Pattern name cannot be empty"),
-});
-
 const AnalyzeQueryInputSchema = z.object({
   sql: z.string().min(1, "SQL query cannot be empty"),
 });
@@ -69,17 +67,43 @@ const GenerateRulesFromRedashInputSchema = z.object({
   intent_keywords: z.array(z.string()).optional(),
 });
 
-const MonthlyFunnelInputSchema = z.object({
-  year: z.number().int().min(2020).max(2030).optional(),
-  month: z.number().int().min(1).max(12).optional(),
+const GetTableSchemaInputSchema = z.object({
+  table_name: z.string().min(1, "Table name cannot be empty"),
 });
 
-// ── Read-only query helper ─────────────────────────────────────────────────
+const SearchTablesInputSchema = z.object({
+  pattern: z.string().min(1, "Search pattern cannot be empty"),
+});
+
+const GetTableRelationshipsInputSchema = z.object({
+  table_name: z.string().min(1, "Table name cannot be empty"),
+});
+
+const GetSchemaContextInputSchema = z.object({
+  table_names: z.array(z.string()).min(1, "Must provide at least one table name"),
+});
+
+const FindTablesByColumnInputSchema = z.object({
+  column_name: z.string().min(1, "Column name cannot be empty"),
+});
+
+const GetRelationshipChainInputSchema = z.object({
+  start_table: z.string().min(1, "Start table cannot be empty"),
+  max_depth: z.number().int().min(1).max(5).optional().default(2),
+});
+
+const GetSalesFunnelInputSchema = z.object({
+  start_date: z.string().min(1, "Start date cannot be empty"),
+  end_date: z.string().min(1, "End date cannot be empty"),
+});
+
+// ── Read-only query helper ───────────────────────────────────────────
 
 async function executeReadOnlyQuery(sql: string, params?: unknown[]) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN TRANSACTION READ ONLY");
+    await client.query("SET LOCAL statement_timeout = '30s'");
     const result = await client.query(sql, params);
     await client.query("COMMIT");
     return result;
@@ -95,27 +119,7 @@ async function executeReadOnlyQuery(sql: string, params?: unknown[]) {
 
 export const toolDefinitions = [
   // ── Database tools ──
-  {
-    name: "query",
-    description:
-      "Run a read-only SQL query against the lohono_api_production PostgreSQL database. Use parameterized queries ($1, $2, ...) with the params array for user-supplied values.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        sql: {
-          type: "string",
-          description: "The SQL query to execute (read-only)",
-        },
-        params: {
-          type: "array",
-          description:
-            "Optional array of parameter values for parameterized queries",
-          items: {},
-        },
-      },
-      required: ["sql"],
-    },
-  },
+  // NOTE: Generic 'query' tool has been removed. Use specialized tools like 'get_sales_funnel' instead.
   {
     name: "list_tables",
     description:
@@ -158,73 +162,137 @@ export const toolDefinitions = [
     },
   },
 
-  // ── Schema intelligence tools ──
+  // ── Database catalog tools ──
   {
-    name: "get_sales_funnel_context",
+    name: "get_catalog_metadata",
     description:
-      "Get the complete sales funnel schema intelligence — core business rules, funnel stage definitions, date filter patterns, source mappings, anti-patterns, and validation checklist. Call this FIRST before writing any sales funnel SQL query to understand all mandatory rules.",
+      "Get metadata about the database catalog files — paths, existence, counts. Use this to verify catalog availability.",
     inputSchema: {
       type: "object" as const,
       properties: {},
     },
   },
   {
-    name: "get_monthly_funnel",
+    name: "get_tables_summary",
     description:
-      "Get the complete sales funnel metrics (Leads, Prospects, Accounts, Sales) for a specific month. If no parameters provided, returns current month data. Returns metrics for the entire month regardless of current day.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        year: {
-          type: "number",
-          description: "Year (e.g. 2026). Defaults to current year if not provided.",
-        },
-        month: {
-          type: "number",
-          description: "Month (1-12). Defaults to current month if not provided.",
-        },
-      },
-    },
-  },
-  {
-    name: "classify_sales_intent",
-    description:
-      "Classify a natural-language question about sales funnel data. Returns the matching query pattern(s), applicable business rules, date filters, and validation checks. Use this to determine WHICH query pattern to use before generating SQL.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        question: {
-          type: "string",
-          description:
-            "The user's natural-language question about sales/funnel data",
-        },
-      },
-      required: ["question"],
-    },
-  },
-  {
-    name: "get_query_template",
-    description:
-      "Get the full rule set, date filters, funnel stages, metrics, special logic, and validation checks for a specific named query pattern. Available patterns: mtd_funnel_current, mtd_funnel_last_year, source_daily_breakdown, open_funnel_count, mtd_lead_details, prospect_aging, account_aging, historical_funnel_details, regional_closed_analysis.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        pattern_name: {
-          type: "string",
-          description:
-            "Name of the query pattern (e.g. mtd_funnel_current, prospect_aging)",
-        },
-      },
-      required: ["pattern_name"],
-    },
-  },
-  {
-    name: "list_query_patterns",
-    description:
-      "List all available sales funnel query patterns with their descriptions and intent keywords. Use this to discover which patterns exist.",
+      "Get a summary of all tables in the database with their column counts, sorted by size. Useful for discovering available tables.",
     inputSchema: {
       type: "object" as const,
       properties: {},
+    },
+  },
+  {
+    name: "get_table_schema",
+    description:
+      "Get the complete schema definition for a specific table from the catalog — all columns with types, constraints, defaults. This reads from the pre-built catalog (faster than describe_table).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        table_name: {
+          type: "string",
+          description: "Name of the table to get schema for",
+        },
+      },
+      required: ["table_name"],
+    },
+  },
+  {
+    name: "search_tables",
+    description:
+      "Search for tables by name pattern (case-insensitive substring match). Returns full table definitions for all matching tables.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        pattern: {
+          type: "string",
+          description: "Search pattern (substring, e.g. 'opportunity', 'enquir')",
+        },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "get_table_relationships",
+    description:
+      "Get all foreign key relationships for a specific table — both outgoing (this table references others) and incoming (other tables reference this table). Includes join examples and business context.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        table_name: {
+          type: "string",
+          description: "Name of the table to get relationships for",
+        },
+      },
+      required: ["table_name"],
+    },
+  },
+  {
+    name: "get_schema_context",
+    description:
+      "Get complete schema context for SQL generation — table definitions and foreign key relationships for multiple tables. Use this when you need detailed schema info for query construction.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        table_names: {
+          type: "array",
+          description: "List of table names to get context for",
+          items: { type: "string" },
+        },
+      },
+      required: ["table_names"],
+    },
+  },
+  {
+    name: "find_tables_by_column",
+    description:
+      "Find all tables that have a specific column name. Useful for discovering which tables contain a particular field.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        column_name: {
+          type: "string",
+          description: "Column name to search for (e.g. 'agent_id', 'deleted_at')",
+        },
+      },
+      required: ["column_name"],
+    },
+  },
+  {
+    name: "get_relationship_chain",
+    description:
+      "Get all tables connected through foreign key relationships starting from a specific table, up to a maximum depth. Returns a list of related table names.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        start_table: {
+          type: "string",
+          description: "Starting table name",
+        },
+        max_depth: {
+          type: "number",
+          description: "Maximum relationship depth to traverse (1-5, default: 2)",
+        },
+      },
+      required: ["start_table"],
+    },
+  },
+  {
+    name: "get_sales_funnel",
+    description:
+      "MANDATORY TOOL for sales funnel metrics. Get sales funnel data (Leads, Prospects, Accounts, Sales) for ANY date range. CRITICAL: This is the ONLY correct way to query sales funnel metrics. User asks for 'leads'? Use this tool. User asks for 'prospects'? Use this tool. User asks for 'sales for January'? Use this tool. DO NOT write custom SQL queries for sales funnel data - the logic is complex (IST timezone +330min, multiple source tables with UNION, exclusions, window functions) and already implemented correctly in this tool. Returns all 4 metrics in one call with proper calculation from development_opportunities, enquiries, stage_histories, and tasks tables.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        start_date: {
+          type: "string",
+          description: "Start date in YYYY-MM-DD format (e.g. '2026-01-01')",
+        },
+        end_date: {
+          type: "string",
+          description: "End date in YYYY-MM-DD format (e.g. '2026-01-31')",
+        },
+      },
+      required: ["start_date", "end_date"],
     },
   },
 
@@ -349,23 +417,7 @@ export async function handleToolCall(
     }
 
     // ── Database tools ──
-
-    if (name === "query") {
-      const { sql, params } = QueryInputSchema.parse(args);
-      const result = await executeReadOnlyQuery(sql, params);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              { sql, params, rowCount: result.rowCount, rows: result.rows },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
+    // NOTE: 'query' tool handler removed - use specialized tools instead
 
     if (name === "list_tables") {
       const { schema } = ListTablesInputSchema.parse(args);
@@ -420,157 +472,269 @@ export async function handleToolCall(
       };
     }
 
-    // ── Schema intelligence tools ──
+    // ── Database catalog tools ──
 
-    if (name === "get_sales_funnel_context") {
-      const context = getFullContext();
+    if (name === "get_catalog_metadata") {
+      const metadata = getCatalogMetadata();
       return {
-        content: [{ type: "text", text: JSON.stringify(context, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(metadata, null, 2) }],
       };
     }
 
-    if (name === "classify_sales_intent") {
-      const { question } = ClassifyIntentInputSchema.parse(args);
-      const result = classifyIntent(question);
+    if (name === "get_tables_summary") {
+      const summary = getTablesSummary();
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
       };
     }
 
-    if (name === "get_query_template") {
-      const { pattern_name } = GetQueryTemplateInputSchema.parse(args);
-      const template = getQueryTemplate(pattern_name);
-      if (!template) {
+    if (name === "get_table_schema") {
+      const { table_name } = GetTableSchemaInputSchema.parse(args);
+      const tableDef = getTableDefinition(table_name);
+      if (!tableDef) {
         return {
           content: [
             {
               type: "text",
-              text: `Unknown pattern: "${pattern_name}". Use list_query_patterns to see available patterns.`,
+              text: `Table "${table_name}" not found in catalog. Use search_tables or get_tables_summary to discover available tables.`,
             },
           ],
           isError: true,
         };
       }
       return {
-        content: [{ type: "text", text: JSON.stringify(template, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(tableDef, null, 2) }],
       };
     }
 
-    if (name === "list_query_patterns") {
-      const patterns = listQueryPatterns();
+    if (name === "search_tables") {
+      const { pattern } = SearchTablesInputSchema.parse(args);
+      const tables = searchTables(pattern);
       return {
-        content: [{ type: "text", text: JSON.stringify(patterns, null, 2) }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                pattern,
+                match_count: tables.length,
+                tables: tables.map((t) => ({
+                  name: t.name,
+                  type: t.type,
+                  column_count: t.columns.length,
+                })),
+                full_definitions: tables,
+              },
+              null,
+              2
+            ),
+          },
+        ],
       };
     }
 
-    if (name === "get_monthly_funnel") {
-      const { year, month } = MonthlyFunnelInputSchema.parse(args || {});
+    if (name === "get_table_relationships") {
+      const { table_name } = GetTableRelationshipsInputSchema.parse(args);
+      const relationships = getTableRelationships(table_name);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                table: table_name,
+                outgoing_count: relationships.outgoing.length,
+                incoming_count: relationships.incoming.length,
+                ...relationships,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    if (name === "get_schema_context") {
+      const { table_names } = GetSchemaContextInputSchema.parse(args);
+      const context = getSchemaContext(table_names);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                requested_tables: table_names,
+                found_tables: Object.keys(context.tables),
+                table_count: Object.keys(context.tables).length,
+                relationship_count: context.foreign_keys.length,
+                ...context,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    if (name === "find_tables_by_column") {
+      const { column_name } = FindTablesByColumnInputSchema.parse(args);
+      const results = findTablesByColumn(column_name);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                column_name,
+                match_count: results.length,
+                tables: results,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    if (name === "get_relationship_chain") {
+      const { start_table, max_depth } =
+        GetRelationshipChainInputSchema.parse(args);
+      const chain = getRelationshipChain(start_table, max_depth);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                start_table,
+                max_depth,
+                related_table_count: chain.length,
+                related_tables: chain,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    if (name === "get_sales_funnel") {
+      const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
       
-      // Use current year/month if not provided
-      const now = new Date();
-      const targetYear = year ?? now.getFullYear();
-      const targetMonth = month ?? now.getMonth() + 1; // JS months are 0-indexed
-      
-      // Calculate first and last day of the month
-      const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
-      const lastDay = new Date(targetYear, targetMonth, 0).getDate();
-      const endDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-      
+      // Query patterns from database/schema/*_query_template.yml
+      // Optimised: replaced RANK() OVER + subquery with MIN() + GROUP BY HAVING
       const sql = `
-        select * FROM
+        SELECT * FROM
         (
-        select 'Leads' as metric, sum(leads)::int as count
-        FROM
-        (
-        SELECT count(distinct(development_opportunities.slug)) as leads
-        FROM development_opportunities
-        WHERE (date(enquired_at + interval '330 minutes') between $1 and $2)
+          -- Leads
+          SELECT 'Leads' as metric, SUM(leads)::int as count
+          FROM
+          (
+            SELECT COUNT(DISTINCT development_opportunities.slug) AS leads
+            FROM development_opportunities
+            WHERE enquired_at >= ($1::date - INTERVAL '330 minutes')
+              AND enquired_at < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
+              AND slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+              AND source != 'DnB'
+              AND status != 'trash'
 
-        union
+            UNION ALL
 
-        select count(id) as leads2
-        from enquiries
-        WHERE enquiries.vertical='development'
-        and enquiry_type='enquiry'
-        and leadable_id is null
-        and date(enquiries.created_at + interval '5 hours 30 minutes') between $1 and $2
-        ) a
+            SELECT COUNT(id) AS leads
+            FROM enquiries
+            WHERE enquiries.vertical = 'development'
+              AND enquiry_type = 'enquiry'
+              AND leadable_id IS NULL
+              AND is_trash != TRUE
+              AND enquiries.created_at >= ($1::date - INTERVAL '5 hours 30 minutes')
+              AND enquiries.created_at < ($2::date + INTERVAL '1 day' - INTERVAL '5 hours 30 minutes')
+          ) leads_data
 
-        union 
+          UNION ALL
 
-        select 'Prospects' as metric, count(distinct(slug))
-        FROM
-        (
-        select development_opportunities.slug as slug,
-        stage_histories.updated_at + interval '330 minutes' as moved_to_prospect,development_opportunities.current_stage as current_stage,
-         RANK() OVER (PARTITION BY stage_histories.leadable_id,
-                                    stage_histories.leadable_type
-                                     ORDER BY stage_histories.updated_at ASC) date_rank
-        FROM development_opportunities 
-        inner join stage_histories on development_opportunities.id=stage_histories.leadable_id AND leadable_type='Development::Opportunity'
-        inner join stages on stage_histories.stage_id=stages.id
-        WHERE vertical = 'development' AND code = 'prospect'
-        ) sub_query
-        WHERE date_rank=1
-        and (date(moved_to_prospect + interval '330 minutes') between $1 and $2)
+          -- Prospects: first time each opportunity entered 'prospect' stage
+          SELECT 'Prospects' as metric, COUNT(*)::int as count
+          FROM (
+            SELECT development_opportunities.slug
+            FROM development_opportunities
+            INNER JOIN stage_histories
+              ON development_opportunities.id = stage_histories.leadable_id
+              AND stage_histories.leadable_type = 'Development::Opportunity'
+            INNER JOIN stages
+              ON stage_histories.stage_id = stages.id
+            WHERE stages.vertical = 'development'
+              AND stages.code = 'prospect'
+              AND development_opportunities.slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+            GROUP BY development_opportunities.slug
+            HAVING DATE(MIN(stage_histories.updated_at) + INTERVAL '330 minutes') BETWEEN $1 AND $2
+          ) prospect_data
 
-        union 
+          UNION ALL
 
-        select 'Accounts' as metric, count(distinct(slug))
-        FROM
-        (
-        select development_opportunities.slug as slug,
-        stage_histories.updated_at + interval '330 minutes' as moved_to_account,development_opportunities.current_stage as current_stage,
-         RANK() OVER (PARTITION BY stage_histories.leadable_id,
-                                    stage_histories.leadable_type
-                                     ORDER BY stage_histories.updated_at ASC) date_rank
-        FROM development_opportunities 
-        inner join stage_histories on development_opportunities.id=stage_histories.leadable_id AND leadable_type='Development::Opportunity'
-        inner join stages on stage_histories.stage_id=stages.id
-        WHERE vertical = 'development' AND code = 'account'
-        ) sub_query
-        WHERE date_rank=1
-        and (date(moved_to_account + interval '330 minutes') between $1 and $2)
+          -- Accounts: first time each opportunity entered 'account' stage
+          SELECT 'Accounts' as metric, COUNT(*)::int as count
+          FROM (
+            SELECT development_opportunities.slug
+            FROM development_opportunities
+            INNER JOIN stage_histories
+              ON development_opportunities.id = stage_histories.leadable_id
+              AND stage_histories.leadable_type = 'Development::Opportunity'
+            INNER JOIN stages
+              ON stage_histories.stage_id = stages.id
+            WHERE stages.vertical = 'development'
+              AND stages.code = 'account'
+              AND development_opportunities.slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+            GROUP BY development_opportunities.slug
+            HAVING DATE(MIN(stage_histories.updated_at) + INTERVAL '330 minutes') BETWEEN $1 AND $2
+          ) account_data
 
-        union 
+          UNION ALL
 
-        SELECT 'Sales' as metric, count(slug)
-        FROM
-          (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
-                  rank() over(PARTITION BY activities.leadable_id
-                              ORDER BY tasks.performed_at + interval '5 hours 30 minutes') AS ranking,
-                  tasks.rating AS rating, development_opportunities.source as source, development_opportunities.slug
-           FROM tasks
-           inner join activities on tasks.id= activities.feedable_id
-           INNER JOIN development_opportunities ON development_opportunities.id=activities.leadable_id
-           where activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
-           AND tasks.rating = 'maal_laao'
-           and (development_opportunities.slug!= 'd-0010K00001mCaxRQAS' and development_opportunities.slug!='d-0012800001IqdMOAAZ'
-               and development_opportunities.slug!= 'd-0012800001Y94DuAAJ'and development_opportunities.slug!= 'd-0012800001Y947rAAB' 
-               and development_opportunities.slug!='d-00Q2800000cjE3iEAE'
-               )
-         ) x
-        WHERE ranking = 1
-        and date(resolved_at_date_ist + interval '330 minutes') between $1 and $2
-        ) query 
-        order by case when metric='Leads' then '1'
-                      when metric='Prospects' then '2'
-                      when metric='Accounts' then '3'
-                      else metric end
+          -- Sales: first 'maal_laao' rating per opportunity
+          SELECT 'Sales' as metric, COUNT(*)::int as count
+          FROM (
+            SELECT development_opportunities.slug
+            FROM tasks
+            INNER JOIN activities ON tasks.id = activities.feedable_id
+            INNER JOIN development_opportunities ON development_opportunities.id = activities.leadable_id
+            WHERE activities.feedable_type = 'Task'
+              AND activities.leadable_type = 'Development::Opportunity'
+              AND tasks.rating = 'maal_laao'
+              AND development_opportunities.slug NOT IN (
+                'd-0010K00001mCaxRQAS',
+                'd-0012800001IqdMOAAZ',
+                'd-0012800001Y94DuAAJ',
+                'd-0012800001Y947rAAB',
+                'd-00Q2800000cjE3iEAE'
+              )
+            GROUP BY development_opportunities.slug
+            HAVING DATE(MIN(tasks.performed_at) + INTERVAL '5 hours 30 minutes') BETWEEN $1 AND $2
+          ) sales_data
+        ) query
+        ORDER BY CASE
+          WHEN metric = 'Leads' THEN 1
+          WHEN metric = 'Prospects' THEN 2
+          WHEN metric = 'Accounts' THEN 3
+          WHEN metric = 'Sales' THEN 4
+          ELSE 5
+        END
       `;
       
-      const result = await executeReadOnlyQuery(sql, [startDate, endDate]);
+      const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify(
               { 
-                sql, 
-                params: [startDate, endDate], 
-                period: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+                start_date, 
+                end_date,
                 rowCount: result.rowCount, 
-                rows: result.rows 
+                metrics: result.rows 
               },
               null,
               2

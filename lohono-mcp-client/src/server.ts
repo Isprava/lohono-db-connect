@@ -179,7 +179,7 @@ app.post("/api/sessions/:id/messages", async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await chat(id, message);
+    const result = await chat(id, message, req.user!.email);
     res.json(result);
   } catch (err) {
     console.error("POST /api/sessions/:id/messages error:", err);

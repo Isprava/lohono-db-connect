@@ -1,0 +1,4423 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                         DATABASE TABLE CATALOG                             ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+Database: lohono_api_production
+Total Tables: 298
+Generated: 2026-02-09T13:53:33.042Z
+
+────────────────────────────────────────────────────────────────────────────────
+SCHEMA: PUBLIC
+Tables: 298
+────────────────────────────────────────────────────────────────────────────────
+
+📋 public.acl_masters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.active_admin_comments (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • namespace: character varying NULL
+      • body: text NULL
+      • resource_type: character varying NULL
+      • resource_id: bigint NULL
+      • author_type: character varying NULL
+      • author_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.activities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • leadable_id: integer NULL
+      • leadable_type: character varying NULL
+      • feedable_id: integer NULL
+      • feedable_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sequence: integer NULL
+      • old_feedable_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.agents (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • slug: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • status: character varying NULL
+      • verified: boolean NULL
+      • location: character varying NULL
+      • poc_exec_id: integer NULL
+      • poc_head_id: integer NULL
+      • company_name: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • agent_type: character varying NULL
+      • vertical: character varying NULL
+      • pan: character varying NULL
+      • gst: character varying NULL
+      • commission: double precision NULL
+      • discount: double precision NULL
+      • address_details: jsonb NULL DEFAULT '{}'::jsonb
+      • source: character varying NULL
+      • source_region: character varying NULL
+
+📋 public.api_consumer_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • api_consumer_id: integer NULL
+      • property_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.api_consumers (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • key: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • currency_id: integer NULL
+      • agent_id: integer NULL
+
+📋 public.app_feedbacks (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • content: character varying NULL
+      • rating: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • contact_id: bigint NULL
+
+📋 public.appointments (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • scheduled_at: timestamp without time zone NOT NULL
+      • opportunity_id: integer NULL
+      • enquiry_id: integer NULL
+      • details: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.ar_internal_metadata (BASE TABLE)
+   🔑 Primary Keys:
+      • key (character varying)
+   📝 Columns:
+      • value: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.asset_area_assets (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • parent_child_sku_item_id: integer NULL
+      • property_area_id: integer NULL
+      • quantity: integer NULL
+      • procurement_date: date NULL
+      • amc_start_date: date NULL
+      • amc_end_date: date NULL
+      • amc_agreement_date: date NULL
+      • area: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • ownership: character varying NULL
+      • warranty_period: integer NULL
+      • vendor_name: character varying NULL
+
+📋 public.asset_audit_issues (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • audit_record_id: integer NULL
+      • quantity_difference: integer NULL
+      • quantity_difference_type: character varying NULL
+      • issue_type: character varying NULL
+      • description: character varying NULL
+      • status: character varying NULL
+      • resolution_notes: character varying NULL
+      • resolved_at: timestamp without time zone NULL
+      • resolved_by: integer NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • audit_task_id: integer NULL
+
+📋 public.asset_audit_records (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • audit_task_id: integer NULL
+      • area_asset_id: integer NULL
+      • planned_audit_date: timestamp without time zone NULL
+      • recorded_time: timestamp without time zone NULL
+      • frequency: character varying NULL
+      • item_name: character varying NULL
+      • quantity: integer NULL
+      • item_type: character varying NULL
+      • quantity_checked: integer NULL
+      • laundry_quantity: integer NULL
+      • assignee_id: character varying NULL
+      • villa_name: character varying NULL
+      • area_name: character varying NULL
+      • status: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.asset_audit_tasks (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • staff_id (bigint)
+      • audit_task_id (bigint)
+   📝 Columns:
+      • auditable_type: character varying NOT NULL
+      • auditable_id: bigint NOT NULL
+      • audit_type: character varying NULL
+      • audit_frequency: character varying NULL
+      • planned_audit_date: timestamp without time zone NULL
+      • start_area_date_time: timestamp without time zone NULL
+      • end_area_date_time: timestamp without time zone NULL
+      • status: character varying NULL
+      • notes: text NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.asset_child_sku_items (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • category: character varying NULL
+      • asset_type: character varying NULL
+      • audit_frequency: character varying NULL
+      • washable: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.asset_parent_child_sku_items (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • parent_sku_item_id (bigint)
+      • child_sku_item_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.asset_parent_sku_items (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • category: character varying NULL
+      • asset_type: character varying NULL
+      • audit_frequency: character varying NULL
+      • washable: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.asset_property_areas (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • area_type: character varying NULL
+      • description: text NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sequence: integer NULL
+
+📋 public.automation_attributes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • entity_id: integer NULL
+      • name: character varying NULL
+      • url_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.automation_entities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.automation_webhooks (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • url: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.banners (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_location_id (bigint)
+   📝 Columns:
+      • banner_json: jsonb NULL DEFAULT '{}'::jsonb
+      • platforms: ARRAY NULL DEFAULT '{}'::character varying[]
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • start_date: date NULL
+      • end_date: date NULL
+      • sequence: integer NULL
+
+📋 public.billing_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • gstin: character varying NULL
+      • address: character varying NULL
+      • state: character varying NULL
+      • city: character varying NULL
+      • country: character varying NULL
+      • contact_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • bank_account_details: character varying NULL
+      • pan: character varying NULL
+      • rental_opportunity_id: integer NULL
+      • pincode: character varying NULL
+      • type: character varying NULL
+
+📋 public.billing_details_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • name: character varying NULL
+      • gstin: character varying NULL
+      • address: character varying NULL
+      • state: character varying NULL
+      • city: character varying NULL
+      • country: character varying NULL
+      • contact_id: integer NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • bank_account_details: character varying NULL
+      • pan: character varying NULL
+
+📋 public.blacklists (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • reason: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • mobile: character varying NULL
+      • country_code: character varying NULL
+      • active: boolean NULL DEFAULT true
+
+📋 public.blackout_dates (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_coupon_template_id (bigint)
+   📝 Columns:
+      • date: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • item_type: character varying NULL DEFAULT 'coupon_template'::character varying
+
+📋 public.brands (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • code: character varying NULL
+      • active: boolean NULL DEFAULT true
+
+📋 public.call_logs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • called_number: character varying NULL
+      • customer_number: character varying NULL
+      • call_transfer_status: character varying NULL
+      • call_status: character varying NULL
+      • call_direction: character varying NULL
+      • call_duration: integer NULL
+      • call_time: timestamp without time zone NULL
+      • call_transfer_duration: integer NULL
+      • staff_list: character varying NULL
+      • recording: character varying NULL
+      • resource_type: character varying NULL
+      • resource_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • answered_staff_id: integer NULL
+      • external_call_id: character varying NULL
+      • original_url: character varying NULL
+      • country_code: character varying NULL
+      • call_type: character varying NULL
+      • menu: character varying NULL
+      • is_internal_call: boolean NOT NULL DEFAULT false
+
+📋 public.categories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • parent_category_id: integer NULL
+      • code: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.change_request_sequences (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • sequence: integer NOT NULL DEFAULT 0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_area_designs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • design_id: integer NULL
+      • theme_image_id: integer NULL
+      • home_and_area_mapping_id: integer NULL
+      • status: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_areas (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sequence: integer NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_bank_account_delivery_timeline_phases (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_bank_account_id (bigint)
+      • chapter_delivery_timeline_phase_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_bank_accounts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • account_number: character varying NULL
+      • bank_name: character varying NULL
+      • ifsc_code: character varying NULL
+      • branch: character varying NULL
+      • entity_name: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • is_subsidiary: boolean NULL DEFAULT false
+
+📋 public.chapter_billing_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • gstin: character varying NULL
+      • address: character varying NULL
+      • state: character varying NULL
+      • city: character varying NULL
+      • pan: character varying NULL
+      • pincode: character varying NULL
+      • country: character varying NULL
+      • type: character varying NULL
+      • villa_name: character varying NULL
+      • villa_address: character varying NULL
+      • bank_account_details: character varying NULL
+      • contact_id: integer NULL
+      • opportunity_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • bank_loan: character varying NULL
+
+📋 public.chapter_change_request_documents (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • attachable_type: character varying NOT NULL
+      • attachable_id: bigint NOT NULL
+      • file: character varying NULL
+      • filename: character varying NULL
+      • content_type: character varying NULL
+      • file_size: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_change_request_options (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_feasibility_detail_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • description: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_change_request_stage_statuses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_change_request_id (bigint)
+   📝 Columns:
+      • stage_name: character varying NOT NULL
+      • status: character varying NOT NULL
+      • remarks: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • poc_name: character varying NULL
+      • due_date: date NULL
+
+📋 public.chapter_change_requests (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_opportunity_property_id (bigint)
+      • created_by_id (bigint)
+   📝 Columns:
+      • number: character varying NOT NULL
+      • title: character varying NOT NULL
+      • description: text NOT NULL
+      • priority: character varying NULL
+      • budget: numeric NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • overall_status: character varying NULL
+      • client_opted_out: boolean NULL DEFAULT false
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.chapter_delivery_timeline_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • parent_transaction_id (bigint)
+   📝 Columns:
+      • chapter_delivery_timeline_id: bigint NULL
+      • payment_date: date NULL
+      • amount: double precision NULL
+      • total_amount: double precision NULL
+      • utr: character varying NULL
+      • account_type: character varying NULL
+      • comment: text NULL
+      • breakdown: jsonb NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • opportunity_client_id: integer NULL
+      • transaction_type: character varying NULL DEFAULT 'collection'::character varying
+
+📋 public.chapter_delivery_timeline_phase_detail_configs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • delivery_timeline_phase_detail_id: integer NULL
+      • location_id: integer NULL
+      • input_configs: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_delivery_timeline_phase_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_delivery_timeline_phase_id: bigint NULL
+      • step: character varying NULL
+      • code: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • is_construction_linked: boolean NOT NULL DEFAULT true
+      • active: boolean NULL DEFAULT true
+
+📋 public.chapter_delivery_timeline_phases (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sub_phase: character varying NULL
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_delivery_timelines (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_property_id: bigint NULL
+      • chapter_delivery_timeline_phase_id: bigint NULL
+      • chapter_delivery_timeline_phase_detail_id: bigint NULL
+      • additional_step: character varying NULL
+      • comment: text NULL
+      • amount: double precision NULL
+      • total_amount: double precision NULL
+      • collection_entity: character varying NULL DEFAULT 'IHPL'::character varying
+      • sequence: double precision NULL
+      • ops_budget_date: date NULL
+      • ops_actual_date: date NULL
+      • client_budget_date: date NULL
+      • is_demand_letter_generated: boolean NULL DEFAULT false
+      • boolean: boolean NULL DEFAULT false
+      • client_actual_date: date NULL
+      • status: character varying NOT NULL DEFAULT 'open'::character varying
+      • breakdown: jsonb NULL
+      • payment_date: date NULL
+      • payment_due_date: date NULL
+      • client_communication_date: date NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_demand_letters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_id: integer NULL
+      • chapter_opportunity_property_id: integer NULL
+      • demand_letter_date: date NULL
+      • client_communication_date: date NULL
+      • delivery_timeline_ids: ARRAY NOT NULL DEFAULT '{}'::integer[]
+      • created_by_id: integer NULL
+      • total_amount_details: jsonb NOT NULL DEFAULT '{}'::jsonb
+      • particulars_details: jsonb NULL DEFAULT '{}'::jsonb
+      • account_details: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • payment_sections: jsonb NULL DEFAULT '[]'::jsonb
+      • villa_name: character varying NULL
+
+📋 public.chapter_designs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • opportunity_id: integer NULL
+      • status: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_feasibility_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_change_request_id (bigint)
+   📝 Columns:
+      • due_date: date NULL
+      • poc_name: character varying NULL
+      • comments: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_finance_quotations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_vendor_quotation_id (bigint)
+   📝 Columns:
+      • status: character varying NULL
+      • valid_till: date NULL
+      • total_cost_excl_taxes: numeric NULL
+      • gst_percent: numeric NULL
+      • total_cost_incl_taxes: numeric NULL
+      • remarks: text NULL
+      • is_editable: boolean NULL
+      • submitted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_finance_quote_configs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • percentage_reference_id (integer)
+   📝 Columns:
+      • seq: integer NULL
+      • head_code: character varying NULL
+      • label: character varying NULL
+      • calculation_type: character varying NULL
+      • formula: character varying NULL
+      • is_editable: boolean NULL
+      • is_active: boolean NULL
+      • metadata: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_finance_quote_line_values (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_finance_quotation_id (bigint)
+      • chapter_finance_quote_config_id (bigint)
+   📝 Columns:
+      • amount: numeric NULL
+      • percent: numeric NULL
+      • computed_amount: numeric NULL
+      • metadata: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_home_and_area_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • home_layout_id: integer NULL
+      • area_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • description: character varying NULL
+
+📋 public.chapter_home_layouts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • bedrooms: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sequence: integer NULL
+
+📋 public.chapter_images (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • imageable_type: character varying NULL
+      • imageable_id: integer NULL
+      • file: character varying NULL
+      • url: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_locations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • city: character varying NULL
+      • state: character varying NOT NULL
+      • country_id: bigint NOT NULL DEFAULT 1
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_opportunities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • slug: character varying NULL
+      • current_stage: character varying NULL
+      • status: character varying NULL
+      • interested_location: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • source: character varying NULL
+      • poc_exec_id: integer NULL
+      • poc_head_id: integer NULL
+      • meta: jsonb NULL
+      • bhk: character varying NULL
+      • min_budget: double precision NULL
+      • max_budget: double precision NULL
+      • interested_area: character varying NULL
+      • estimated_purchase_date: date NULL
+      • message: text NULL
+      • source_city: character varying NULL
+      • source_country: character varying NULL
+      • source_region: character varying NULL
+      • interested_home_types: ARRAY NULL DEFAULT '{}'::character varying[]
+      • source_others: character varying NULL
+      • agent_id: integer NULL
+      • name: character varying NULL
+      • email: character varying NULL
+      • country_code: character varying NULL
+      • mobile: character varying NULL
+      • brand_id: integer NULL
+      • lead_completed_at: timestamp without time zone NULL
+      • prospect_completed_at: timestamp without time zone NULL
+      • maal_laao_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • home_layout_id: bigint NULL
+      • post_sales_exec_id: integer NULL
+      • client_communication_required: boolean NULL DEFAULT true
+
+📋 public.chapter_opportunity_client_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_id: integer NULL
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_opportunity_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_id: bigint NULL
+      • chapter_property_id: bigint NULL
+      • approval_status: character varying NULL DEFAULT 'pending'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • backed_out_at: timestamp without time zone NULL
+      • backout_reason: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.chapter_opportunity_property_bank_accounts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_property_id: bigint NULL
+      • chapter_delivery_timeline_phase_id: integer NULL
+      • chapter_bank_account_id: integer NULL
+      • custom_bank_account_text: character varying NULL
+      • account_type: character varying NULL DEFAULT 'base'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_opportunity_property_contracts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_property_id: bigint NULL
+      • chapter_delivery_timeline_phase_id: bigint NULL
+      • approval_status: character varying NULL
+      • comment: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_payment_schedule_version_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_payment_schedule_version_id: bigint NULL
+      • snapshot: jsonb NULL
+      • delivery_timeline_sub_phase_name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_payment_schedule_versions (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • chapter_opportunity_property_id: bigint NULL
+      • name: character varying NULL
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • total_amount: double precision NULL
+      • total_base_amount: double precision NULL
+      • delivery_timeline_phase_name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • slug: character varying NULL
+      • property_type: character varying NULL
+      • active: boolean NULL
+      • description: text NULL
+      • room_count: integer NULL
+      • bedroom_count: integer NULL
+      • plot_area: character varying NULL
+      • builtup_area: character varying NULL
+      • carpet_area: character varying NULL
+      • rera_area: character varying NULL
+      • google_place_url: character varying NULL
+      • chapter_location_id: integer NULL
+      • address: character varying NULL
+      • pincode: character varying NULL
+      • price: double precision NULL
+      • amenities: ARRAY NULL DEFAULT '{}'::character varying[]
+      • pool: integer NOT NULL DEFAULT 0
+      • rera_approval_required: boolean NULL DEFAULT false
+      • boolean: boolean NULL DEFAULT false
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • budget_sales_consideration: numeric NULL
+      • include_in_reports: boolean NULL DEFAULT true
+      • terrace: character varying NULL
+      • semi_covered: character varying NULL
+      • built_area: character varying NULL
+      • no_of_bedroom: character varying NULL
+      • pool_size: character varying NULL
+
+📋 public.chapter_receipts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • number: character varying NULL
+      • chapter_opportunity_id: integer NULL
+      • chapter_delivery_timeline_id: integer NULL
+      • created_by_id: integer NULL
+      • milestone_details: jsonb NULL DEFAULT '{}'::jsonb
+      • utr_based_detail: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_sales_reviews (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_change_request_id (bigint)
+      • selected_quotation_id (bigint)
+      • decided_by_id (bigint)
+   📝 Columns:
+      • client_decision: character varying NULL
+      • cost_borne_by_isprava: numeric NULL
+      • final_agreed_cost: numeric NULL
+      • reason: character varying NULL
+      • remarks: text NULL
+      • decided_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_theme_images (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • home_and_area_mapping_id: integer NULL
+      • theme_id: integer NULL
+      • region: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sequence: integer NULL
+
+📋 public.chapter_themes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sequence: integer NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.chapter_vendor_quotations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • chapter_change_request_id (bigint)
+   📝 Columns:
+      • vendors: jsonb NULL
+      • quotation: numeric NULL
+      • poc_name: character varying NULL
+      • valid_till: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • description: text NULL
+
+📋 public.checklists (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • url: character varying NULL
+      • active: boolean NULL DEFAULT false
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.constant_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • value: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.contact_merges (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • contact_id: integer NULL
+      • target_contact_id: integer NULL
+      • contacts_json: jsonb NULL
+      • target_contacts_json: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.contacts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • social_media_profiles: jsonb NULL
+      • dob: date NULL
+      • is_primary: boolean NULL
+      • company: character varying NULL
+      • profession: character varying NULL
+      • designation: character varying NULL
+      • gender: character varying NULL
+      • likes: ARRAY NULL DEFAULT '{}'::character varying[]
+      • dislikes: ARRAY NULL DEFAULT '{}'::character varying[]
+      • address: character varying NULL
+      • city: character varying NULL
+      • state: character varying NULL
+      • country: character varying NULL
+      • verified: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sector: character varying NULL
+      • other_professional_details: character varying NULL
+      • industry: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • family_details: jsonb NULL DEFAULT '{}'::jsonb
+      • final_contact_id: integer NULL
+      • alternate_names: ARRAY NULL DEFAULT '{}'::character varying[]
+
+📋 public.contacts_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • name: character varying NULL
+      • social_media_profiles: jsonb NULL
+      • dob: date NULL
+      • is_primary: boolean NULL
+      • company: character varying NULL
+      • profession: character varying NULL
+      • designation: character varying NULL
+      • gender: character varying NULL
+      • likes: ARRAY NULL
+      • dislikes: ARRAY NULL
+      • address: character varying NULL
+      • city: character varying NULL
+      • state: character varying NULL
+      • country: character varying NULL
+      • verified: boolean NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • sector: character varying NULL
+      • other_professional_details: character varying NULL
+      • industry: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • family_details: jsonb NULL
+
+📋 public.contracts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • license_type: character varying NULL
+      • rev_share_percentage: double precision NULL
+      • permitted_nights: integer NULL
+      • left_nights: integer NULL
+      • onboard_date: date NULL
+      • effective_date: date NULL
+      • min_rooms_to_sell: integer NULL
+      • property_id: integer NULL
+      • max_adults: integer NULL
+      • max_children: integer NULL
+      • pets_allowed: boolean NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • expiry_date: date NULL
+      • marketing_nights: integer NULL DEFAULT 0
+      • breakdown: jsonb NULL DEFAULT '{}'::jsonb
+      • revenue_data_start_date: date NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.counters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • value: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.countries (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • slug: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • iso_code: character varying NULL
+      • currency_id: bigint NULL
+      • international_calling_code: character varying NULL
+      • sequence: integer NULL
+      • login_allowed: boolean NULL
+
+📋 public.credit_histories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • user_id (integer)
+      • source_credit_history_id (integer)
+   📝 Columns:
+      • amount: double precision NULL DEFAULT 0.0
+      • transaction_type: character varying NULL
+      • expiry: date NULL
+      • reservation_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • opportunity_id: integer NULL
+      • comment: character varying NULL
+      • type: character varying NULL
+      • balance: double precision NULL
+      • lock_version: integer NULL
+      • property_id: integer NULL
+
+📋 public.credit_histories_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • amount: double precision NULL
+      • transaction_type: character varying NULL
+      • expiry: date NULL
+      • reservation_id: integer NULL
+      • user_id: integer NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • opportunity_id: integer NULL
+      • comment: character varying NULL
+
+📋 public.credits (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • user_id (integer)
+   📝 Columns:
+      • amount: double precision NULL DEFAULT 0.0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • type: character varying NULL
+      • lock_version: integer NULL
+
+📋 public.credits_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • amount: double precision NULL
+      • user_id: integer NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+
+📋 public.currencies (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • symbol: character varying NULL
+      • rate: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • description: character varying NULL
+
+📋 public.damage_masters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • value: character varying NULL
+      • cost: numeric NULL
+      • parent_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.delete_requests (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • resource_id: integer NULL
+      • resource_type: character varying NULL
+      • country_id: integer NULL
+      • reason: character varying NULL
+      • deleted: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_bank_account_delivery_timeline_phases (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_bank_account_id (bigint)
+      • development_delivery_timeline_phase_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_bank_accounts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • account_number: character varying NULL
+      • bank_name: character varying NULL
+      • ifsc_code: character varying NULL
+      • branch: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • entity_name: character varying NULL
+      • is_subsidiary: boolean NULL DEFAULT false
+
+📋 public.development_billing_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • gstin: character varying NULL
+      • address: character varying NULL
+      • state: character varying NULL
+      • city: character varying NULL
+      • pan: character varying NULL
+      • pincode: character varying NULL
+      • country: character varying NULL
+      • type: character varying NULL
+      • villa_name: character varying NULL
+      • bank_account_details: character varying NULL
+      • contact_id: integer NULL
+      • opportunity_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • villa_address: character varying NULL
+      • bank_loan: character varying NULL
+
+📋 public.development_change_request_documents (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • attachable_type: character varying NOT NULL
+      • attachable_id: bigint NOT NULL
+      • file: character varying NULL
+      • filename: character varying NULL
+      • content_type: character varying NULL
+      • file_size: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_change_request_options (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_feasibility_detail_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • description: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_change_request_stage_statuses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_change_request_id (bigint)
+   📝 Columns:
+      • stage_name: character varying NOT NULL
+      • status: character varying NOT NULL
+      • remarks: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • poc_name: character varying NULL
+      • due_date: date NULL
+
+📋 public.development_change_requests (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_opportunity_property_id (bigint)
+      • created_by_id (bigint)
+   📝 Columns:
+      • number: character varying NOT NULL
+      • title: character varying NOT NULL
+      • description: text NOT NULL
+      • priority: character varying NULL
+      • budget: numeric NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • overall_status: character varying NULL
+      • client_opted_out: boolean NULL DEFAULT false
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.development_default_bank_accounts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_bank_account_id: integer NULL
+      • development_delivery_timeline_phase_detail_id: integer NULL
+      • transaction_type: character varying NULL
+      • property_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_delivery_timeline_demand_letters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_delivery_timeline_id: integer NULL
+      • data: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_delivery_timeline_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • parent_transaction_id (bigint)
+   📝 Columns:
+      • development_delivery_timeline_id: bigint NULL
+      • payment_date: date NULL
+      • amount: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • breakdown: json NULL
+      • total_amount: double precision NULL DEFAULT 0.0
+      • utr: character varying NULL
+      • account_type: character varying NULL
+      • comment: character varying NULL
+      • actual_budget_intimation_date: date NULL
+      • deleted_at: timestamp without time zone NULL
+      • opportunity_client_id: integer NULL
+      • transaction_type: character varying NULL DEFAULT 'collection'::character varying
+
+📋 public.development_delivery_timeline_phase_detail_configs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • delivery_timeline_phase_detail_id: integer NULL
+      • location_id: integer NULL
+      • input_configs: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_delivery_timeline_phase_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_delivery_timeline_phase_id: bigint NULL
+      • step: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • code: character varying NULL
+      • input_configs: jsonb NULL DEFAULT '{}'::jsonb
+      • is_construction_linked: boolean NOT NULL DEFAULT true
+      • active: boolean NULL DEFAULT true
+
+📋 public.development_delivery_timeline_phases (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sub_phase: character varying NULL
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_delivery_timelines (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_property_id: bigint NULL
+      • amount: double precision NULL
+      • sequence: double precision NULL
+      • ops_budget_date: date NULL
+      • ops_actual_date: date NULL
+      • client_budget_date: date NULL
+      • client_actual_date: date NULL
+      • status: character varying NOT NULL DEFAULT 'open'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • development_delivery_timeline_phase_id: bigint NULL
+      • development_delivery_timeline_phase_detail_id: bigint NULL
+      • additional_step: character varying NULL
+      • comment: text NULL
+      • breakdown: json NULL
+      • total_amount: double precision NULL DEFAULT 0.0
+      • collection_entity: character varying NULL DEFAULT 'IHPL'::character varying
+      • approve: boolean NULL DEFAULT false
+      • client_communication_date: date NULL
+      • payment_due_date: date NULL
+      • deleted_at: timestamp without time zone NULL
+      • is_demand_letter_generated: boolean NULL DEFAULT false
+      • data: jsonb NULL DEFAULT '[]'::jsonb
+      • payment_date: date NULL
+
+📋 public.development_demand_letters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_id: integer NULL
+      • development_opportunity_property_id: integer NULL
+      • demand_letter_date: date NULL
+      • client_communication_date: date NULL
+      • delivery_timeline_ids: ARRAY NOT NULL DEFAULT '{}'::integer[]
+      • created_by_id: integer NULL
+      • total_amount_details: jsonb NOT NULL DEFAULT '{}'::jsonb
+      • particulars_details: jsonb NULL DEFAULT '{}'::jsonb
+      • account_details: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • payment_sections: jsonb NULL DEFAULT '[]'::jsonb
+      • villa_name: character varying NULL
+
+📋 public.development_feasibility_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_change_request_id (bigint)
+   📝 Columns:
+      • due_date: date NULL
+      • poc_name: character varying NULL
+      • comments: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_finance_quotations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_vendor_quotation_id (bigint)
+   📝 Columns:
+      • status: character varying NULL
+      • valid_till: date NULL
+      • total_cost_excl_taxes: numeric NULL
+      • gst_percent: numeric NULL
+      • total_cost_incl_taxes: numeric NULL
+      • remarks: text NULL
+      • is_editable: boolean NULL
+      • submitted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_finance_quote_configs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • percentage_reference_id (integer)
+   📝 Columns:
+      • seq: integer NULL
+      • head_code: character varying NULL
+      • label: character varying NULL
+      • calculation_type: character varying NULL
+      • formula: character varying NULL
+      • is_editable: boolean NULL
+      • is_active: boolean NULL
+      • metadata: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_finance_quote_line_values (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_finance_quotation_id (bigint)
+      • development_finance_quote_config_id (bigint)
+   📝 Columns:
+      • amount: numeric NULL
+      • percent: numeric NULL
+      • computed_amount: numeric NULL
+      • metadata: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_locations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • city: character varying NULL
+      • state: character varying NOT NULL
+      • country_id: bigint NOT NULL DEFAULT 1
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_opportunities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • slug: character varying NULL
+      • current_stage: character varying NULL
+      • status: character varying NULL
+      • interested_location: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • source: character varying NULL
+      • poc_exec_id: integer NULL
+      • poc_head_id: integer NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • min_bhk: double precision NULL
+      • max_bhk: double precision NULL
+      • min_budget: double precision NULL
+      • max_budget: double precision NULL
+      • interested_area: character varying NULL
+      • estimated_purchase_date: date NULL
+      • message: text NULL
+      • source_city: character varying NULL
+      • source_country: character varying NULL
+      • source_region: character varying NULL
+      • interested_home_types: ARRAY NULL DEFAULT '{}'::character varying[]
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • source_others: character varying NULL
+      • agent_id: integer NULL
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • brand_id: integer NULL
+      • lead_completed_at: timestamp without time zone NULL
+      • prospect_completed_at: timestamp without time zone NULL
+      • maal_laao_at: timestamp without time zone NULL
+      • country_code: character varying NULL
+      • client_communication_required: boolean NULL DEFAULT true
+      • registration_date: date NULL
+      • post_sales_exec_id: integer NULL
+
+📋 public.development_opportunity_client_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_id: integer NULL
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_opportunity_delivery_timeline_phase_detail_dates (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • opportunity_property_id: integer NULL
+      • delivery_timeline_phase_detail_id: integer NULL
+      • ops_budget_date: date NULL
+      • ops_actual_date: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_opportunity_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_id: bigint NULL
+      • development_property_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • approval_status: character varying NULL DEFAULT 'pending'::character varying
+      • backed_out_at: timestamp without time zone NULL
+      • backout_reason: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.development_opportunity_property_bank_accounts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_property_id: bigint NULL
+      • development_delivery_timeline_phase_id: integer NULL
+      • development_bank_account_id: integer NULL
+      • custom_bank_account_text: character varying NULL
+      • account_type: character varying NULL DEFAULT 'base'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_opportunity_property_contracts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_property_id: bigint NULL
+      • development_delivery_timeline_phase_id: bigint NULL
+      • approval_status: character varying NULL
+      • comment: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_payment_schedule_version_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_payment_schedule_version_id: bigint NULL
+      • snapshot: jsonb NULL
+      • delivery_timeline_sub_phase_name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_payment_schedule_versions (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_property_id: bigint NULL
+      • name: character varying NULL
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • total_amount: double precision NULL
+      • total_base_amount: double precision NULL
+      • delivery_timeline_phase_name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • slug: character varying NULL
+      • property_type: character varying NULL
+      • active: boolean NULL
+      • sold_out: boolean NULL
+      • description: text NULL
+      • room_count: integer NULL
+      • bedroom_count: integer NULL
+      • plot_area: character varying NULL
+      • builtup_area: character varying NULL
+      • carpet_area: character varying NULL
+      • rera_area: character varying NULL
+      • google_place_url: character varying NULL
+      • city: character varying NULL
+      • state: character varying NULL
+      • country: character varying NULL
+      • address: character varying NULL
+      • pincode: character varying NULL
+      • usp: character varying NULL
+      • amenities: ARRAY NULL DEFAULT '{}'::character varying[]
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • est_delivery_date: date NULL
+      • pool: integer NOT NULL DEFAULT 0
+      • development_location_id: integer NULL
+      • rera_approval_required: boolean NULL DEFAULT false
+      • deleted_at: timestamp without time zone NULL
+      • budget_sales_consideration: numeric NULL
+      • include_in_reports: boolean NULL DEFAULT true
+      • terrace: character varying NULL
+      • semi_covered: character varying NULL
+      • built_area: character varying NULL
+      • no_of_bedroom: character varying NULL
+      • pool_size: character varying NULL
+
+📋 public.development_proposals (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_id: integer NULL
+      • development_property_id: integer NULL
+      • rating: integer NULL
+      • status: character varying NULL
+      • proposed_price: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • closed_price: double precision NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.development_receipts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • number: character varying NULL
+      • development_opportunity_id: integer NULL
+      • development_delivery_timeline_id: integer NULL
+      • created_by_id: integer NULL
+      • milestone_details: jsonb NULL DEFAULT '{}'::jsonb
+      • utr_based_detail: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_sales_reviews (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_change_request_id (bigint)
+      • selected_quotation_id (bigint)
+      • decided_by_id (bigint)
+   📝 Columns:
+      • client_decision: character varying NULL
+      • cost_borne_by_isprava: numeric NULL
+      • final_agreed_cost: numeric NULL
+      • reason: character varying NULL
+      • remarks: text NULL
+      • decided_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_sales_tracker_timelines (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • development_opportunity_property_id: bigint NULL
+      • development_sales_tracker_id: bigint NULL
+      • completion_date: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_sales_trackers (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • sales_type: character varying NULL
+      • parent_category_id: integer NULL
+      • sequence: integer NULL
+      • property_type: character varying NULL
+      • rera_approval_required: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.development_vendor_quotations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • development_change_request_id (bigint)
+   📝 Columns:
+      • vendors: jsonb NULL
+      • quotation: numeric NULL
+      • poc_name: character varying NULL
+      • valid_till: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • description: text NULL
+
+📋 public.devices (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • session_id: integer NULL
+      • device_id: character varying NULL
+      • device_token: character varying NULL
+      • platform: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.documents (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • document_type: character varying NULL
+      • document_identifier: character varying NULL
+      • attachable_id: integer NULL
+      • attachable_type: character varying NULL
+      • file: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+      • cloud_path: character varying NULL
+      • hidden_from_customers: boolean NULL DEFAULT false
+      • created_by: integer NULL
+
+📋 public.emails (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • email: character varying NULL
+      • contactable_id: integer NULL
+      • contactable_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • previous_contact_id: integer NULL
+      • primary: boolean NULL DEFAULT false
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.emails_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • email: character varying NULL
+      • contactable_id: integer NULL
+      • contactable_type: character varying NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+
+📋 public.enquiries (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • mobile: character varying NULL
+      • email: character varying NULL
+      • interested_in: character varying NULL
+      • location: character varying NULL
+      • message: text NULL
+      • vertical: character varying NULL
+      • slug: character varying NULL
+      • is_trash: boolean NULL DEFAULT false
+      • source: character varying NULL
+      • source_city: character varying NULL
+      • source_region: character varying NULL
+      • staff_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • leadable_id: integer NULL
+      • leadable_type: character varying NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • source_others: character varying NULL
+      • agent_id: integer NULL
+      • contact_id: integer NULL
+      • enquiry_type: character varying NULL
+      • brand_id: integer NULL
+      • country_code: character varying NULL
+      • platform_id: integer NULL
+      • country_id: integer NULL
+      • home_owner_id: bigint NULL
+
+📋 public.event_and_experience_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • resource_id: integer NULL
+      • resource_type: character varying NULL
+      • status: character varying NULL DEFAULT 'no_rating'::character varying
+      • tags: ARRAY NULL DEFAULT '{ene}'::character varying[]
+      • details: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.faq_feedbacks (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • faq_map_id: integer NULL
+      • created_by_id: integer NULL
+      • status: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.faq_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • resource_type: character varying NULL
+      • resource_id: integer NULL
+      • faq_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sequence: integer NULL
+
+📋 public.faqs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • question: character varying NULL
+      • answer: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • faq_type: character varying NULL
+
+📋 public.feedback_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • feedback_question_id: integer NULL
+      • rental_property_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.feedback_questions (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • question: character varying NULL
+      • response_type: character varying NULL
+      • required: boolean NULL
+      • sequence: integer NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • feedback_type: character varying NULL
+      • overall_rating: boolean NULL DEFAULT false
+      • question_type: character varying NULL
+
+📋 public.feedback_responses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • feedback_status_id: integer NULL
+      • feedback_question_id: integer NULL
+      • response: text NULL
+      • rating: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.feedback_statuses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • guest_name: character varying NULL
+      • slug: character varying NULL
+      • resource_id: integer NULL
+      • resource_type: character varying NULL
+      • actor_id: integer NULL
+      • actor_type: character varying NULL
+      • status: character varying NULL
+      • short_url: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • feedback_type: character varying NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • active: boolean NULL DEFAULT false
+
+📋 public.grocery_categories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • value: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • parent_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.grocery_order_products (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • product_id: integer NULL
+      • category_id: integer NULL
+      • order_id: integer NULL
+      • total_quantity: integer NULL
+      • vendor_id: integer NULL
+      • product_lot_size: integer NULL
+      • product_unit_id: integer NULL
+      • price: double precision NULL
+      • delivered_date: timestamp without time zone NULL
+      • fulfilled_date: timestamp without time zone NULL
+      • status: character varying NULL DEFAULT 'approval_pending'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.grocery_order_rejections (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • order_product_id: integer NULL
+      • reason: character varying NULL
+      • comment: text NULL
+      • quantity: integer NULL
+      • status: character varying NULL DEFAULT 'initiated'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.grocery_orders (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • slug: character varying NOT NULL
+      • property_id: integer NULL
+      • expected_delivery_date: timestamp without time zone NULL
+      • status: character varying NULL DEFAULT 'approval_pending'::character varying
+      • created_by: integer NULL
+      • assigned_to: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • delivered_date: timestamp without time zone NULL
+      • fulfilled_date: timestamp without time zone NULL
+      • total_item_quantity: integer NULL DEFAULT 0
+      • deleted_at: timestamp without time zone NULL
+      • remark: character varying NULL
+      • source_order_id: integer NULL
+      • ho_order: boolean NULL DEFAULT false
+      • cost_center_id: integer NULL
+      • property_expense_id: integer NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.grocery_product_units (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: jsonb NULL
+      • value: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.grocery_product_vendors (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • product_id: integer NULL
+      • vendor_id: integer NULL
+      • price: double precision NULL
+      • lot_size: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.grocery_products (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • slug: character varying NULL
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • price: double precision NULL
+      • product_unit_id: integer NULL
+      • category_id: integer NULL
+      • lot_size: integer NULL
+      • vendor_id: integer NULL
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+      • weight_per_unit: character varying NULL
+
+📋 public.grocery_property_to_staffs_rosters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • assigned_by_id: integer NULL
+      • property_id: integer NULL
+      • previous_staff_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • current_staff_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.grocery_staff_to_properties_rosters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • assigned_by_id: integer NULL
+      • assigned_to_id: integer NULL
+      • previous_property_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • current_property_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.grocery_translations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • locale: character varying NOT NULL
+      • key: character varying NOT NULL
+      • value: character varying NULL
+      • translatable_type: character varying NULL
+      • translatable_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.grocery_vendor_assignee_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • vendor_id: integer NULL
+      • record_id: integer NULL
+      • record_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.holiday_settings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • holiday_date: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.home_acqui_opportunities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • property_name: character varying NULL
+      • current_stage: character varying NULL
+      • status: character varying NULL
+      • slug: character varying NULL
+      • area: character varying NULL
+      • source_city: character varying NULL
+      • source_country: character varying NULL
+      • adults: integer NULL
+      • extra_adults: integer NULL
+      • bedrooms: integer NULL
+      • bathrooms: integer NULL
+      • pools: integer NULL
+      • source: character varying NULL
+      • source_others: character varying NULL
+      • message: text NULL
+      • enquired_at: timestamp without time zone NULL
+      • next_follow_up: timestamp without time zone NULL
+      • gdrive_urls: ARRAY NULL DEFAULT '{}'::character varying[]
+      • lat: double precision NULL
+      • long: double precision NULL
+      • address: character varying NULL
+      • gmaps_url: character varying NULL
+      • location_id: integer NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • poc_head_id: integer NULL
+      • poc_exec_id: integer NULL
+      • agent_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • country_code: character varying NULL
+      • location: character varying NULL
+      • isprava_built: boolean NULL DEFAULT false
+      • ho_contact: character varying NULL
+      • ho_name: character varying NULL
+
+📋 public.home_owner_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • home_owner_id: integer NULL
+      • property_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • property_type: character varying NULL DEFAULT 'rental'::character varying
+
+📋 public.home_owner_property_revenue_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • property_id: integer NULL
+      • reservation_id: integer NULL
+      • check_in: date NULL
+      • check_out: date NULL
+      • breakdown: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.home_owners (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • primary: boolean NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • role_id: integer NULL
+      • country_code: character varying NULL
+      • llp_enabled: boolean NULL DEFAULT true
+
+📋 public.images (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • imageable_type: character varying NULL
+      • imageable_id: integer NULL
+      • sequence: integer NULL
+      • caption: character varying NULL
+      • alt: character varying NULL
+      • file: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • url: character varying NULL
+      • size: integer NULL
+      • orientation: character varying NULL
+
+📋 public.influencer_referral_codes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • user_id: integer NULL
+      • code: character varying NULL
+      • point: integer NULL
+      • url: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • start_date: timestamp without time zone NULL
+      • end_date: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.invoice_sequences (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • sequence_type: character varying NULL
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.lead_migrations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • opportunity_id: bigint NULL
+      • vertical: character varying NULL
+      • parent_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.master_records (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • value: character varying NULL
+      • sequence: integer NULL
+      • master_id: integer NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.masters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • key: character varying NULL
+      • vertical: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.medium (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • vertical: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • active: boolean NULL DEFAULT true
+
+📋 public.milestone_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • event_and_experience_detail_id: integer NULL
+      • status: character varying NULL
+      • parent_name: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.mobiles (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • mobile: character varying NULL
+      • contactable_id: integer NULL
+      • contactable_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • country_code: character varying NULL
+      • previous_contact_id: integer NULL
+      • primary: boolean NULL DEFAULT false
+      • country_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.mobiles_backup (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • mobile: character varying NULL
+      • contactable_id: integer NULL
+      • contactable_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • country_code: character varying NULL
+      • previous_contact_id: integer NULL
+      • primary: boolean NULL DEFAULT false
+      • country_id: integer NULL
+
+📋 public.notes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • content: text NULL
+      • author_id: integer NULL
+      • assignee_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.notifications (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • recipient_id: integer NULL
+      • recipient_type: character varying NULL
+      • content: character varying NULL
+      • attachable_id: integer NULL
+      • attachable_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • body: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.opportunity_contacts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • opportunity_id: integer NULL
+      • opportunity_type: character varying NULL
+      • contact_id: integer NULL
+      • is_primary: boolean NULL DEFAULT false
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+      • previous_contact_id: integer NULL
+      • is_guest: boolean NULL
+      • tier_id: integer NULL
+
+📋 public.opportunity_merges (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • leadable_id: integer NULL
+      • leadable_type: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • source: character varying NULL
+      • meta: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.opportunity_stages (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • leadable_id: bigint NULL
+      • stage_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • leadable_type: character varying NULL
+
+📋 public.otp_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • otp: character varying NULL
+      • mobile: character varying NULL
+      • expires_at: timestamp without time zone NULL
+      • verified: boolean NULL DEFAULT false
+      • sent_count: integer NULL DEFAULT 0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • context: character varying NULL
+      • country_code: character varying NULL
+      • email: character varying NULL
+
+📋 public.pincodes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • code: character varying NULL
+      • taluk: character varying NULL
+      • district_name: character varying NULL
+      • state: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.pivot_1_test (VIEW)
+   📝 Columns:
+      • feedback_status_id: bigint NULL
+      • property_name: character varying NULL
+      • location: character varying NULL
+      • guest_name: character varying NULL
+      • trip_url: text NULL
+      • feedback_date: date NULL
+      • question_id: integer NULL
+      • rating: integer NULL
+
+📋 public.pivot_2_test (VIEW)
+   📝 Columns:
+      • feedback_status_id: bigint NULL
+      • property_name: character varying NULL
+      • location: character varying NULL
+      • guest_name: character varying NULL
+      • trip_url: text NULL
+      • feedback_date: date NULL
+      • question_id: integer NULL
+      • rating: integer NULL
+
+📋 public.platforms (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • code: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.plots (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • location_id: integer NULL
+      • vertical: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.property_support_contacts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • property_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • staff_id: integer NULL
+      • contact_type: character varying NULL
+      • property_type: character varying NULL
+
+📋 public.receipt_sequences (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • sequence_type: character varying NOT NULL
+      • milestone_type: character varying NOT NULL
+      • sequence: integer NOT NULL DEFAULT 0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.referral_codes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • code: character varying NULL
+      • user_id: integer NULL
+      • tier_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • url: character varying NULL
+
+📋 public.referral_points_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • tier_id: integer NULL
+      • points_to_referrer: double precision NULL
+      • points_to_referee: double precision NULL
+      • expiry_for_referrer: integer NULL
+      • expiry_for_referee: integer NULL
+      • points_type: character varying NULL DEFAULT 'flat'::character varying
+      • criteria: jsonb NULL DEFAULT '{"min_bhk_for_referee": 3, "min_nights_for_referee": 2}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.referral_trackings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • referral_code_id: integer NULL
+      • referee_id: integer NULL
+      • status: character varying NULL DEFAULT 'pending'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • points_to_referrer: double precision NULL DEFAULT 0.0
+      • points_to_referee: double precision NULL DEFAULT 0.0
+      • expiry_for_referrer: date NULL
+      • expiry_for_referee: date NULL
+      • reason: character varying NULL
+      • sub_status: character varying NULL
+      • referral_code_type: character varying NULL
+
+📋 public.relationships (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • primary_contact_id: integer NULL
+      • child_contact_id: integer NULL
+      • primary_to_child_relation: character varying NULL
+      • child_to_primary_relation: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.reminders (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • agenda: text NULL
+      • medium_id: integer NULL
+      • due_at: timestamp without time zone NULL
+      • done_at: timestamp without time zone NULL
+      • author_id: integer NULL
+      • assignee_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • task_id: integer NULL
+      • parent_reminder_id: integer NULL
+      • slug: character varying NULL
+      • old_id: integer NULL
+      • old_task_id: integer NULL
+      • old_parent_reminder_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.rental_airport_transfer_locations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • location_id: integer NULL
+      • car_id: integer NULL
+      • airport_id: integer NULL
+      • transfer_type_id: integer NULL
+      • price: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_airport_transfer_types (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_airports (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • location_id: integer NULL
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_amenities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • amenity_type: character varying NULL
+      • sequence: integer NULL
+
+📋 public.rental_amenity_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_amenity_id (bigint)
+   📝 Columns:
+      • mapping_id: bigint NOT NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • mapping_type: character varying NULL
+      • context: character varying NULL
+      • sequence: integer NULL
+      • available: boolean NULL DEFAULT true
+
+📋 public.rental_bad_stays (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • resource_id: integer NULL
+      • resource_type: character varying NULL
+      • account: character varying NULL
+      • reason: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_bedrooms (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • bed_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • floor: character varying NULL
+      • bedroom_details: jsonb NULL
+
+📋 public.rental_cancellation_reasons (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • label: character varying NULL
+      • mapping_type: character varying NULL DEFAULT 'rental_reserervation'::character varying
+      • modal_type: character varying NULL DEFAULT 'free_text'::character varying
+      • is_display: boolean NULL DEFAULT true
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_cancellation_rule_masters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • refund_percentage: double precision NULL
+      • credit_percentage: double precision NULL
+      • cancellation_charge_percentage: double precision NULL
+      • min_days: integer NULL
+      • max_days: integer NULL
+      • min_amount_percentage: integer NULL
+      • max_amount_percentage: integer NULL
+      • payment_type: character varying NULL
+      • credit_expiry_in_months: integer NULL
+      • status: character varying NULL DEFAULT 'active'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_cancellations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • cancellable_id: integer NULL
+      • cancellable_type: character varying NULL
+      • reason: character varying NULL
+      • comments: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • cancellation_reason_id: integer NULL
+      • poc_exec_id: integer NULL
+      • cancelled_at: timestamp without time zone NULL
+      • note: text NULL
+
+📋 public.rental_cars (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • location_id: integer NULL
+      • name: character varying NULL
+      • category: character varying NULL
+      • category_description: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_charge_items (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • item_id: integer NULL
+      • item_type: character varying NULL
+      • charge_id: integer NULL
+      • quantity: integer NULL
+      • unit_price: numeric NULL DEFAULT 0.0
+      • total_price: numeric NULL DEFAULT 0.0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • taxes: numeric NULL DEFAULT 0.0
+      • discount: numeric NULL DEFAULT 0.0
+      • budget: numeric NULL DEFAULT 0.0
+
+📋 public.rental_charge_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • charge_master_id: integer NULL
+      • resource_id: integer NULL
+      • resource_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_charge_master_categories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • value: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_charge_master_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • charge_master_id: integer NULL
+      • property_id: integer NULL
+      • visible_on_app: boolean NULL DEFAULT false
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_charge_masters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • charge_type: character varying NULL
+      • is_display: boolean NULL DEFAULT true
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • charge_master_category_id: integer NULL
+      • location_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • description: text NULL
+      • complementary: boolean NULL
+      • fixed: boolean NULL
+      • sequence: integer NULL
+
+📋 public.rental_charges (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • description: character varying NULL
+      • amount: double precision NULL
+      • breakdown: jsonb NULL DEFAULT '{}'::jsonb
+      • rental_opportunity_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+      • charged_at: timestamp without time zone NULL
+      • quantity: integer NULL
+      • gst_percentage: double precision NULL
+      • paid: boolean NULL DEFAULT false
+      • note: text NULL
+      • charge_type: character varying NULL
+      • rental_property_id: integer NULL
+      • payment_mode: character varying NULL
+      • vendor_id: bigint NULL
+      • payment_status: character varying NULL
+      • rental_reservation_id: integer NULL
+      • is_visible: boolean NULL DEFAULT true
+      • status: character varying NULL DEFAULT 'availed'::character varying
+      • delivery_time: timestamp without time zone NULL
+      • entity_type: character varying NULL
+      • diet_preference_id: integer NULL
+      • charge_master_id: integer NULL
+      • staff_id: integer NULL
+      • special_request: character varying NULL
+      • creator_type: character varying NULL
+      • creator_id: bigint NULL
+      • updater_type: character varying NULL
+      • updater_id: bigint NULL
+      • meal_preference: character varying NULL
+
+📋 public.rental_check_in_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_reservation_id: bigint NULL
+      • rental_opportunity_id: bigint NULL
+      • check_in_time: timestamp without time zone NULL
+      • check_out_time: timestamp without time zone NULL
+      • logs: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_cluster_offering_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • cluster_offering_type_id (bigint)
+      • original_offering_type_id (bigint)
+      • original_property_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_coupon_bundles (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_coupon_template_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sequence: integer NULL
+      • active: boolean NULL DEFAULT true
+      • add_on_code_template_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • display_template_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_coupon_offers (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • offer_type: character varying NULL
+      • value: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • rental_coupon_template_id: integer NULL
+      • location_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • platform_ids: ARRAY NULL DEFAULT '{}'::integer[]
+
+📋 public.rental_coupon_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_property_id: bigint NULL
+      • rental_coupon_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • auto_apply: boolean NULL
+      • sequence: integer NULL
+
+📋 public.rental_coupon_redemptions (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • user_id: integer NULL
+      • coupon_id: integer NULL
+      • count: integer NULL DEFAULT 0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • opportunity_id: integer NULL
+      • reservation_ids: ARRAY NULL DEFAULT '{}'::integer[]
+
+📋 public.rental_coupon_template_mobiles (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • mobile: character varying NULL
+      • coupon_template_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_coupon_templates (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • applicable_from: date NULL
+      • applicable_to: date NULL
+      • check_in_date: date NULL
+      • check_out_date: date NULL
+      • max_discount: double precision NULL
+      • min_amount: double precision NULL
+      • early_bird_value: integer NULL
+      • min_nights: integer NULL
+      • firesale_value: character varying NULL
+      • name: character varying NULL
+      • included_property_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • active: boolean NULL
+      • auto_apply: boolean NULL DEFAULT false
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • weightage: integer NULL
+      • tier_id: bigint NULL
+      • included_charge_master_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • min_quantity: integer NULL
+      • cost_center: character varying NULL
+      • ihpl_budget_amount: integer NULL DEFAULT 0
+      • ivpl_budget_amount: integer NULL DEFAULT 0
+      • excluded_charge_master_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • template_type: character varying NULL DEFAULT 'reservation'::character varying
+      • offer_type: character varying NULL
+      • offer_value: double precision NULL
+      • last_minute_value: integer NULL
+      • platforms: ARRAY NULL DEFAULT '{}'::character varying[]
+      • add_on_types: ARRAY NULL DEFAULT '{}'::character varying[]
+      • llp_discount_type: character varying NULL
+      • llp_discount_value: double precision NULL
+      • max_cashback: double precision NULL
+      • applicable_tier_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • add_on_discount_type: character varying NULL
+      • add_on_discount_value: double precision NULL
+      • applicable_addons: ARRAY NULL DEFAULT '{}'::character varying[]
+      • cashback_multiplier: double precision NULL DEFAULT 0.0
+
+📋 public.rental_coupon_terms (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • coupon_id: integer NULL
+      • sequence: integer NULL
+      • content: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_coupons (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • code: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • current_redemption: integer NULL DEFAULT 0
+      • max_redemption: integer NULL DEFAULT 0
+      • rental_coupon_template_id: integer NULL
+      • coupon_type: character varying NULL DEFAULT 'reservation'::character varying
+      • coupon_method: character varying NULL DEFAULT 'coupon_code'::character varying
+      • linked_with_pg: boolean NULL DEFAULT false
+      • visible: boolean NULL DEFAULT false
+      • name: character varying NULL
+      • description: text NULL
+      • sequence: integer NULL
+      • user_max_redemption: integer NULL DEFAULT 0
+      • discount_text: character varying NULL
+
+📋 public.rental_damages (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • damage_type: character varying NULL
+      • name: character varying NULL
+      • quantity: integer NULL
+      • amount: double precision NULL
+      • property_id: integer NULL
+      • opportunity_id: integer NULL
+      • date: date NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • dispute: boolean NULL DEFAULT false
+
+📋 public.rental_deposit_statuses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_reservation_id (bigint)
+   📝 Columns:
+      • amount: double precision NULL
+      • refund_amount: double precision NULL
+      • status: character varying NULL
+      • reason: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+      • refund_date: timestamp without time zone NULL
+
+📋 public.rental_diet_preferences (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • meal_offering_id: integer NULL
+      • meal_type: character varying NULL
+      • sequence: integer NULL
+      • adult_price: integer NULL
+      • child_price: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sub_preference: character varying NULL
+
+📋 public.rental_discounts (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_coupon_id (bigint)
+      • rental_reservation_id (bigint)
+   📝 Columns:
+      • amount: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_expense_cost_centers (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • code: character varying NULL
+      • finance_code: character varying NULL
+      • category_type: ARRAY NULL DEFAULT '{}'::character varying[]
+      • active: boolean NULL DEFAULT true
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_featured_tags (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • active: boolean NULL DEFAULT true
+      • sequence: integer NULL
+
+📋 public.rental_grm_notes (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_opportunity_id (bigint)
+   📝 Columns:
+      • created_by: integer NULL
+      • updated_by: integer NULL
+      • note: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_highlight_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • rental_highlight_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_highlights (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • description: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • slug: character varying NULL
+      • sequence: integer NULL
+      • calendar_filter: boolean NULL
+
+📋 public.rental_holds (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_property_id: integer NULL
+      • expiry: timestamp without time zone NULL
+      • rental_reservation_id: integer NULL
+      • author_id: integer NULL
+      • active: boolean NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_inventory_unit_links (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • booking_of_property_config_id (bigint)
+      • affects_property_config_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_invilla_services (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • description: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • active: boolean NULL DEFAULT true
+      • sequence: integer NULL
+      • details: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.rental_invoice_statuses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_invoice_id (bigint)
+   📝 Columns:
+      • status: character varying NULL
+      • response: jsonb NULL
+      • rejection_reason: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • comments: character varying NULL
+      • cancellation_reason: character varying NULL
+      • cancellation_remark: character varying NULL
+
+📋 public.rental_invoices (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • invoice_type: character varying NULL
+      • number: character varying NULL
+      • reservation_id: integer NULL
+      • data: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • type: character varying NULL
+      • inv_type: character varying NULL
+      • parent_invoice_id: integer NULL
+
+📋 public.rental_locations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • country_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • active: boolean NULL
+      • slug: character varying NULL
+      • sequence: integer NULL
+      • city: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • state: character varying NULL
+      • upcoming: boolean NULL
+      • oi_sequence: integer NULL
+      • lat: double precision NULL
+      • long: double precision NULL
+      • oi_active: boolean NOT NULL DEFAULT true
+
+📋 public.rental_meal_offerings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sequence: integer NULL
+      • meal_plan_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_meal_plan_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • meal_plan_id: integer NULL
+      • property_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_meal_plans (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sequence: integer NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • offerings: ARRAY NULL DEFAULT '{}'::character varying[]
+
+📋 public.rental_menu_charge_masters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • menu_id (bigint)
+      • charge_master_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_menu_item_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • menu_item_id: integer NULL
+      • property_id: integer NULL
+      • price: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_menu_items (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • sequence: integer NULL
+      • menu_item_id: integer NULL
+      • veg: boolean NULL
+      • selection_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • diet_type: character varying NULL
+      • servings: character varying NULL
+      • spice_level: integer NULL DEFAULT 1
+      • min_qty: integer NULL DEFAULT 0
+      • max_qty: integer NULL DEFAULT 0
+      • virtual_menu_item: boolean NULL DEFAULT false
+      • active: boolean NULL DEFAULT true
+
+📋 public.rental_menu_menu_items (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • menu_id: integer NULL
+      • menu_item_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_menu_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • menu_id: integer NULL
+      • property_id: integer NULL
+      • adult_price: double precision NULL
+      • child_price: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • platforms: ARRAY NULL DEFAULT '{}'::character varying[]
+
+📋 public.rental_menus (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • fixed_menu: boolean NULL DEFAULT false
+      • complimentary: boolean NULL DEFAULT false
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • menu_type: character varying NULL
+      • diet_type: character varying NULL
+      • sequence: integer NULL
+      • charge_master_id: integer NULL
+      • linked_charge_master_id: integer NULL
+      • internal_reference: character varying NULL
+      • banner_description: text NULL
+
+📋 public.rental_mood_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • rental_mood_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_moods (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • description: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • slug: character varying NULL
+
+📋 public.rental_nearby_places (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • estimated_time: integer NULL
+      • city: character varying NULL
+      • state: character varying NULL
+      • lat: double precision NULL
+      • long: double precision NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • is_lohono_property: boolean NULL DEFAULT false
+
+📋 public.rental_opportunities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • poc_exec_id (bigint)
+      • poc_head_id (bigint)
+   📝 Columns:
+      • slug: character varying NOT NULL
+      • message: text NULL
+      • min_budget: numeric NULL
+      • status: character varying NULL
+      • source: character varying NULL
+      • check_in: date NULL
+      • check_out: date NULL
+      • current_stage: character varying NULL
+      • source_city: character varying NULL
+      • source_country: character varying NULL
+      • group_size: integer NULL
+      • adults_count: integer NULL
+      • children_count: integer NULL
+      • visit_purpose: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • rental_location_id: integer NULL
+      • max_budget: numeric NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • agent_id: integer NULL
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • grm_exec_id: integer NULL
+      • brand_id: integer NULL
+      • damage_frozen: boolean NULL
+      • security_deposit_refunded: boolean NULL
+      • lead_completed_at: timestamp without time zone NULL
+      • maal_laao_at: timestamp without time zone NULL
+      • deposit_refunded_at: timestamp without time zone NULL
+      • source_info: jsonb NULL DEFAULT '{}'::jsonb
+      • country_code: character varying NULL
+      • platform_id: integer NULL
+      • country_id: integer NULL
+      • home_owner_id: bigint NULL
+
+📋 public.rental_opportunity_pocs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • opportunity_id: integer NULL
+      • ene_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_partner_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • partner_name: character varying NULL
+      • name: character varying NULL
+      • slug: character varying NULL
+      • location_id: integer NULL
+      • external_uid: character varying NULL
+      • adults: integer NULL
+      • children: integer NULL
+      • bedrooms_count: integer NULL
+      • description: text NULL
+      • bedroom_details: jsonb NULL DEFAULT '{}'::jsonb
+      • lat: numeric NULL
+      • lon: numeric NULL
+      • address_lines: ARRAY NULL DEFAULT '{}'::character varying[]
+      • city: character varying NULL
+      • state: character varying NULL
+      • layouts: jsonb NULL
+      • amenities: jsonb NULL
+      • highlights: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • active: boolean NULL
+
+📋 public.rental_partner_property_rates (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • partner_property_id: integer NULL
+      • rate: numeric NULL
+      • package_name: character varying NULL
+      • booked_from: date NULL
+      • booked_till: date NULL
+      • rate_details: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.rental_payments (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_opportunity_id (bigint)
+   📝 Columns:
+      • amount: double precision NULL
+      • status: character varying NULL
+      • gateway: character varying NULL
+      • url: character varying NULL
+      • external_id: character varying NULL
+      • transaction_id: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • raw: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • name: character varying NULL
+      • callback_processed: boolean NULL DEFAULT false
+      • reservation_id: integer NULL
+      • payment_method: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • breakdown: jsonb NULL DEFAULT '{}'::jsonb
+      • charge_id: integer NULL
+      • approved: boolean NULL
+      • payment_date: date NULL
+      • poc_id: integer NULL
+      • country_code: character varying NULL
+      • payment_for: character varying NULL
+      • approval_status: character varying NULL
+      • currency_id: integer NULL
+      • lock_version: integer NULL
+      • rejection_comments: character varying NULL
+      • rejection_reason: character varying NULL
+      • reservation_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • merchant_id: character varying NULL
+
+📋 public.rental_pitched_rates (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_reservation_id: integer NULL
+      • date: date NULL
+      • price: numeric NULL DEFAULT 0.0
+      • discounted_price: numeric NULL DEFAULT 0.0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_policies (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • content: text NULL
+      • policy_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • sequence: double precision NULL DEFAULT 0.0
+
+📋 public.rental_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • location_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • slug: character varying NULL
+      • active: boolean NULL
+      • property_type: character varying NULL
+      • trending: boolean NULL
+      • isprava_exclusive: boolean NULL
+      • adults: integer NULL
+      • extra_adults: integer NULL
+      • children: integer NULL
+      • extra_children: integer NULL
+      • adults_rate: double precision NULL
+      • children_rate: double precision NULL
+      • currency_id: integer NULL
+      • bedroom_count: double precision NULL
+      • pools_count: integer NULL
+      • baths_count: integer NULL
+      • pets_allowed: boolean NULL
+      • description: text NULL
+      • lat: double precision NULL
+      • long: double precision NULL
+      • google_place_id: character varying NULL
+      • city: character varying NULL
+      • address_line: character varying NULL
+      • image_360_url: character varying NULL
+      • wheelchair_friendly: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • isprava_built: boolean NULL
+      • state: character varying NULL
+      • pms_attributes: jsonb NULL DEFAULT '{}'::jsonb
+      • property_details: jsonb NULL
+      • upcoming: boolean NULL DEFAULT false
+      • brand_id: integer NULL
+      • settings: jsonb NULL DEFAULT '{}'::jsonb
+      • rentable: boolean NULL
+      • parent_property_id: integer NULL
+      • pin_code: character varying NULL
+      • villa_alias: character varying NULL
+      • partner_name: character varying NULL
+      • built_by: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • sequence: integer NULL
+      • property_type_json: jsonb NULL DEFAULT '{"card_type": "villa", "villa_type": "villa", "legacy_card_type": "standard"}'::jsonb
+      • sellable: boolean NULL DEFAULT true
+      • under_construction_property_id: integer NULL
+
+📋 public.rental_property_calendars (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • property_config_id (integer)
+   📝 Columns:
+      • date: date NULL
+      • price: double precision NULL
+      • discounted_price: double precision NULL
+      • status: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • ho_blackout: boolean NULL DEFAULT false
+      • day_status: character varying NULL
+      • night_status: character varying NULL
+      • rental_reservation_id: integer NULL
+      • lock_version: integer NULL
+      • inventory: integer NULL
+      • min_nights: integer NULL DEFAULT 1
+      • check_in_allowed: boolean NULL DEFAULT true
+      • check_out_allowed: boolean NULL DEFAULT true
+      • opportunity_slug: character varying NULL
+      • sellable: boolean NULL DEFAULT true
+      • updated_price: numeric NULL
+
+📋 public.rental_property_cluster_members (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_cluster_property_id (bigint)
+      • rental_property_config_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_config_clusters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_property_id: integer NULL
+      • property_config_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • other_cluster_dependent_property_config_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • current_cluster_affected_config_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_config_types (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • bed_type: character varying NULL
+      • total_inventory: integer NULL
+      • occupancy: integer NULL
+      • extra_occupancy: integer NULL
+      • rental_property_id: integer NULL
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deposit: integer NULL
+      • adults_rate: integer NULL
+      • children_rate: integer NULL
+      • details: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.rental_property_configs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_property_id: integer NULL
+      • bedrooms: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • active: boolean NULL DEFAULT true
+      • max_occupancy: integer NULL
+      • connected_config_ids_backup: ARRAY NULL DEFAULT '{}'::integer[]
+      • rental_property_config_type_id: integer NULL
+      • rental_property_room_id: integer NULL
+      • staah_mapping_id: character varying NULL
+      • min_price: double precision NULL
+      • next_availability_ranges: jsonb NULL DEFAULT '[]'::jsonb
+      • availability_last_updated_at: timestamp without time zone NULL
+      • rental_property_offering_type_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+      • nextpax_property_config_id: character varying NULL
+
+📋 public.rental_property_expenses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • ticket_id: integer NULL
+      • property_id: integer NULL
+      • expense_type_id: integer NULL
+      • bill_number: character varying NULL
+      • bill_date: date NULL
+      • amount: double precision NULL
+      • status: character varying NULL
+      • breakdown: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • description: character varying NULL
+      • service: character varying NULL
+      • dice_created_at: timestamp without time zone NULL
+      • dice_updated_at: timestamp without time zone NULL
+      • dice_approved_at: timestamp without time zone NULL
+      • vendor_id: integer NULL
+      • prepaid_card: character varying NULL
+      • expense_date: timestamp without time zone NULL
+      • expense_start_date: timestamp without time zone NULL
+      • expense_end_date: timestamp without time zone NULL
+      • deleted_at: timestamp without time zone NULL
+      • is_dice_transaction: boolean NULL DEFAULT false
+      • cost_center: character varying NULL
+      • cost_center_id: integer NULL
+
+📋 public.rental_property_favorites (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • favoritable_type: character varying NULL
+      • favoritable_id: integer NULL
+      • user_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_featured_tags (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • rental_featured_tag_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_feedbacks (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_property_id: integer NULL
+      • average_ratings: double precision NULL DEFAULT 0.0
+      • ratings_count: integer NULL DEFAULT 0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_invilla_services (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • rental_invilla_service_id (bigint)
+   📝 Columns:
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_offering_types (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+   📝 Columns:
+      • name: character varying NOT NULL
+      • base_occupancy: integer NULL
+      • extra_occupancy: integer NULL
+      • bed_type: character varying NULL
+      • pools_count: integer NULL
+      • baths_count: integer NULL
+      • details: jsonb NULL
+      • aggregated_base_occupancy: integer NOT NULL DEFAULT 0
+      • aggregated_extra_occupancy: integer NOT NULL DEFAULT 0
+      • aggregated_bedrooms: integer NOT NULL DEFAULT 0
+      • min_inventory_threshold: integer NOT NULL DEFAULT 1
+      • max_inventory_threshold: integer NULL
+      • active: boolean NOT NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.rental_property_policy_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+      • rental_policy_id (bigint)
+   📝 Columns:
+      • sequence: double precision NULL DEFAULT 0.0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_quotations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_opportunity_id: integer NULL
+      • property_config_id: integer NULL
+      • rental_property_id: integer NULL
+      • check_in: timestamp without time zone NULL
+      • check_out: timestamp without time zone NULL
+      • property_quotation: jsonb NULL
+      • breakdown: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_property_rooms (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+   📝 Columns:
+      • number: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • property_alias: character varying NULL
+
+📋 public.rental_refundable_bookings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • quote_id: character varying NULL
+      • reservation_id: bigint NULL
+      • external_product_id: integer NULL
+      • sale_id: character varying NULL
+      • amount: double precision NULL
+      • premium: double precision NULL
+      • is_opted: boolean NULL
+      • status: character varying NULL DEFAULT 'initiated'::character varying
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_refunds (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • reservation_id: integer NULL
+      • amount_collected: double precision NULL DEFAULT 0.0
+      • amount_credited: double precision NULL DEFAULT 0.0
+      • expiry: date NULL
+      • amount_refunded: double precision NULL DEFAULT 0.0
+      • cancellation_charges: double precision NULL DEFAULT 0.0
+      • pending_amount: double precision NULL DEFAULT 0.0
+      • staff_id: integer NULL
+      • refund_date: date NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • opportunity_id: integer NULL
+      • cancellation_rule_id: integer NULL
+
+📋 public.rental_reservation_approvals (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • hold_id: integer NULL
+      • approver_id: integer NULL
+      • status: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • approval_type: character varying NULL DEFAULT 'trip_discount'::character varying
+
+📋 public.rental_reservation_property_configs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_reservation_id (bigint)
+      • rental_property_config_id (bigint)
+   📝 Columns:
+      • quantity_booked: integer NULL DEFAULT 1
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_reservations (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_opportunity_id (bigint)
+      • rental_property_id (bigint)
+      • user_id (integer)
+   📝 Columns:
+      • check_in: date NULL
+      • check_out: date NULL
+      • adults: integer NULL
+      • children: integer NULL
+      • status: character varying NULL
+      • unblock_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • slug: character varying NOT NULL
+      • cancellation_reason: character varying NULL
+      • amount: double precision NULL
+      • breakdown: jsonb NULL DEFAULT '{}'::jsonb
+      • external_booking_id: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • home_owner_id: integer NULL
+      • booking_poc_id: integer NULL
+      • cancellation_poc_id: integer NULL
+      • confirmed_at: timestamp without time zone NULL
+      • cancelled_at: timestamp without time zone NULL
+      • reservation_date: date NULL
+      • villa_attendants: ARRAY NULL DEFAULT '{}'::character varying[]
+      • delete_by_custmer_at: timestamp without time zone NULL
+      • coupon_id: integer NULL
+      • platform_id: integer NULL
+      • auto_released_at: timestamp without time zone NULL
+
+📋 public.rental_reservations_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • rental_opportunity_id: bigint NULL
+      • rental_property_id: bigint NULL
+      • check_in: date NULL
+      • check_out: date NULL
+      • adults: integer NULL
+      • children: integer NULL
+      • status: character varying NULL
+      • unblock_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • slug: character varying NULL
+      • cancellation_reason: character varying NULL
+      • amount: double precision NULL
+      • breakdown: jsonb NULL
+      • external_booking_id: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • user_id: integer NULL
+      • home_owner_id: integer NULL
+      • booking_poc_id: integer NULL
+      • cancellation_poc_id: integer NULL
+      • confirmed_at: timestamp without time zone NULL
+      • cancelled_at: timestamp without time zone NULL
+      • reservation_date: date NULL
+      • villa_attendants: ARRAY NULL
+      • delete_by_custmer_at: timestamp without time zone NULL
+      • coupon_id: integer NULL
+      • platform_id: integer NULL
+
+📋 public.rental_things_todos (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • rental_property_id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • city: character varying NULL
+      • state: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_top_highlight_properties (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • rental_property_id: integer NULL
+      • rental_top_highlight_id: integer NULL
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.rental_top_highlights (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.reservation_support_staffs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • reservation_id: integer NULL
+      • support_staff_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.roles (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • acl: ARRAY NULL DEFAULT '{}'::character varying[]
+      • label: character varying NULL
+      • department: character varying NULL
+
+📋 public.rosters (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • department: character varying NULL
+      • property_id: integer NULL
+      • mapping: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.schema_migrations (BASE TABLE)
+   🔑 Primary Keys:
+      • version (character varying)
+
+📋 public.segment_results (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • segment_id: integer NULL
+      • contact_id: integer NULL
+      • property_id: integer NULL
+      • location_id: integer NULL
+      • brand_id: integer NULL
+      • poc_head_id: integer NULL
+      • poc_exec_id: integer NULL
+      • accurate: boolean NULL
+      • leadable_id: integer NULL
+      • leadable_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+      • rejection_reason: character varying NULL
+      • property_name: character varying NULL
+      • location_name: character varying NULL
+      • check_in: date NULL
+      • check_out: date NULL
+
+📋 public.segments (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • query: character varying NULL
+      • vertical: character varying NULL
+      • refreshed_at: timestamp without time zone NULL
+      • query_json: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • query_description: character varying NULL
+
+📋 public.seo (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • resource_id: integer NULL
+      • resource_type: character varying NULL
+      • fields: jsonb NULL DEFAULT '{}'::jsonb
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.sessions (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • session_identifier: character varying NULL
+      • resource_id: bigint NULL
+      • logged_out: boolean NULL DEFAULT false
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • resource_type: character varying NULL
+      • session_source: character varying NULL
+
+📋 public.site_visit_plots (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • plot_id: integer NULL
+      • site_visit_id: integer NULL
+
+📋 public.site_visit_status_histories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • status: character varying NULL
+      • assigned_by_id: integer NULL
+      • comments: text NULL
+      • site_visit_id: bigint NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.site_visits (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • assignee_id: integer NULL
+      • assigned_by_id: integer NULL
+      • status: character varying NULL
+      • comments: text NULL
+      • opportunity_id: integer NULL
+      • cancellation_reason: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • opportunity_type: character varying NULL
+      • viewing_type: character varying NULL
+      • follow_up_time: timestamp without time zone NULL
+      • description: character varying NULL
+      • visit_date_time: timestamp without time zone NULL
+      • vertical: character varying NULL
+      • rental_property_ids: ARRAY NULL DEFAULT '{}'::integer[]
+
+📋 public.slot_settings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • start_time: time without time zone NOT NULL
+      • end_time: time without time zone NOT NULL
+      • slot_duration: integer NOT NULL DEFAULT 30
+      • slot_size: integer NULL DEFAULT 3
+      • blackout_time_between_slots: integer NULL DEFAULT 0
+      • cutoff_period: integer NULL DEFAULT 90
+      • lunch_start: time without time zone NOT NULL
+      • lunch_end: time without time zone NOT NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • month_limit: integer NULL DEFAULT 6
+
+📋 public.solene_addresses (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • line_1: character varying NULL
+      • line_2: character varying NULL
+      • pincode: character varying NULL
+      • state: character varying NULL
+      • address_type: character varying NULL
+      • addressable_type: character varying NOT NULL
+      • addressable_id: bigint NOT NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • city: character varying NULL
+      • country: character varying NULL
+
+📋 public.solene_applications (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • membership_type: character varying NULL
+      • slug: character varying NULL
+      • home_name: character varying NULL
+      • name: character varying NULL
+      • date_of_birth: date NULL
+      • email: character varying NULL
+      • country_code: character varying NULL
+      • mobile: character varying NULL
+      • links: jsonb NULL DEFAULT '{}'::jsonb
+      • sources_data: jsonb NULL DEFAULT '{}'::jsonb
+      • additional_data: jsonb NULL DEFAULT '{}'::jsonb
+      • status: character varying NULL DEFAULT 'pending'::character varying
+      • submitted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • enquiry_id: integer NULL
+      • opportunity_id: integer NULL
+      • anniversary: date NULL
+
+📋 public.solene_billing_details (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • gstin: character varying NULL
+      • address: character varying NULL
+      • state: character varying NULL
+      • city: character varying NULL
+      • pan: character varying NULL
+      • pincode: character varying NULL
+      • country: character varying NULL
+      • type: character varying NULL
+      • bank_account_details: character varying NULL
+      • contact_id: integer NULL
+      • opportunity_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.solene_members (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • application_id (bigint)
+   📝 Columns:
+      • member_type: character varying NULL
+      • full_name: character varying NULL
+      • date_of_birth: date NULL
+      • email: character varying NULL
+      • country_code: character varying NULL
+      • mobile: character varying NULL
+      • relationship: character varying NULL
+      • anniversary: date NULL
+      • linkedin_profile: character varying NULL
+      • social_media_handle: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.solene_membership_plans (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • code: character varying NULL
+      • category: character varying NULL
+      • display_name: character varying NULL
+      • base_amount: double precision NULL
+      • gst_percentage: integer NULL
+      • duration_months: integer NULL
+      • active: boolean NULL DEFAULT true
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • membership_format: character varying NULL
+
+📋 public.solene_membership_profiles (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • membership_id: integer NULL
+      • name: character varying NULL
+      • date_of_birth: date NULL
+      • relationship: character varying NULL
+      • address: text NULL
+      • social_media_handle: character varying NULL
+      • profession: character varying NULL
+      • company: character varying NULL
+      • notes: text NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • anniversary: date NULL
+      • home: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • villa_location: character varying NULL
+
+📋 public.solene_membership_sequences (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • membership_type: character varying NOT NULL
+      • current_number: integer NULL DEFAULT 0
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.solene_memberships (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • opportunity_id: integer NULL
+      • membership_number: character varying NULL
+      • contact_id: integer NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • country_code: character varying NULL
+      • membership_plan_id: integer NULL
+      • profile_type: character varying NULL DEFAULT 'primary'::character varying
+      • status: character varying NULL DEFAULT 'inactive'::character varying
+      • start_date: date NULL
+      • end_date: date NULL
+      • amount: double precision NULL
+      • breakdown: jsonb NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • deleted_at: timestamp without time zone NULL
+
+📋 public.solene_opportunities (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • slug: character varying NOT NULL
+      • status: character varying NULL
+      • email: character varying NULL
+      • country_code: character varying NULL
+      • mobile: character varying NULL
+      • name: character varying NULL
+      • location: character varying NULL
+      • poc_exec_id: integer NULL
+      • membership_exec_id: integer NULL
+      • assigned_to: integer NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+      • message: text NULL
+      • source: character varying NULL
+      • source_others: character varying NULL
+      • source_city: character varying NULL
+      • current_stage: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • source_info: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.solene_payments (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   🔗 Foreign Keys:
+      • solene_opportunity_id (integer)
+   📝 Columns:
+      • amount: double precision NULL
+      • status: character varying NULL
+      • gateway: character varying NULL
+      • url: character varying NULL
+      • external_id: character varying NULL
+      • transaction_id: character varying NULL
+      • email: character varying NULL
+      • name: character varying NULL
+      • mobile: character varying NULL
+      • rejection_comments: character varying NULL
+      • rejection_reason: character varying NULL
+      • payment_date: date NULL
+      • deleted_at: date NULL
+      • country_code: character varying NULL
+      • created_by_id: integer NULL
+      • currency_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • payment_for: character varying NULL DEFAULT 'membership'::character varying
+
+📋 public.staffs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • handle: character varying NULL
+      • mobile: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • email: character varying NOT NULL DEFAULT ''::character varying
+      • encrypted_password: character varying NOT NULL DEFAULT ''::character varying
+      • reset_password_token: character varying NULL
+      • reset_password_sent_at: timestamp without time zone NULL
+      • remember_created_at: timestamp without time zone NULL
+      • sign_in_count: integer NOT NULL DEFAULT 0
+      • current_sign_in_at: timestamp without time zone NULL
+      • last_sign_in_at: timestamp without time zone NULL
+      • current_sign_in_ip: inet NULL
+      • last_sign_in_ip: inet NULL
+      • verticals: ARRAY NULL DEFAULT '{}'::character varying[]
+      • head_id: integer NULL
+      • calling_number: character varying NULL
+      • role_id: integer NULL
+      • location_ids: ARRAY NULL DEFAULT '{}'::character varying[]
+      • active: boolean NULL DEFAULT true
+      • authentication_token: character varying NULL
+      • country_code: character varying NULL
+      • knowlarity_status: character varying NULL
+      • data: jsonb NULL
+      • acl_array: ARRAY NULL DEFAULT '{}'::character varying[]
+      • rental_property_ids: ARRAY NULL DEFAULT '{}'::integer[]
+
+📋 public.stage_histories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • leadable_id: bigint NULL
+      • action: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • leadable_type: character varying NULL
+      • stage_id: integer NULL
+      • author_id: integer NULL
+
+📋 public.stages (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • vertical: character varying NULL
+      • sequence: integer NULL
+      • parent_stage_id: integer NULL
+      • required_stage_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • optional_stage_ids: ARRAY NULL DEFAULT '{}'::integer[]
+      • checklist_type: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • code: character varying NULL
+      • description: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • minimum_optional_stages_count: integer NULL DEFAULT 0
+
+📋 public.status_histories (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • resource_id: integer NULL
+      • old_status: character varying NULL
+      • new_status: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • resource_type: character varying NULL
+      • actor_type: character varying NULL
+      • actor_id: integer NULL
+
+📋 public.support_staffs (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • type: character varying NULL
+      • active: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.taggings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (integer)
+   🔗 Foreign Keys:
+      • tag_id (integer)
+   📝 Columns:
+      • taggable_type: character varying NULL
+      • taggable_id: integer NULL
+      • tagger_type: character varying NULL
+      • tagger_id: integer NULL
+      • context: character varying(128) NULL
+      • created_at: timestamp without time zone NULL
+
+📋 public.tags (BASE TABLE)
+   🔑 Primary Keys:
+      • id (integer)
+   📝 Columns:
+      • name: character varying NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • taggings_count: integer NULL DEFAULT 0
+
+📋 public.tasks (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • minutes: text NULL
+      • performed_at: timestamp without time zone NULL
+      • medium_id: integer NULL
+      • rating: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • author_id: integer NULL
+      • assignee_id: integer NULL
+      • reminder_id: integer NULL
+      • slug: character varying NULL
+      • old_id: integer NULL
+      • deleted_at: timestamp without time zone NULL
+      • closed_reason: jsonb NULL
+
+📋 public.ticket_expense_approvals (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • budgeted_cost: double precision NULL
+      • approved_cost: double precision NULL
+      • ticket_id: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • description: text NULL
+      • status: character varying NOT NULL DEFAULT 'pending'::character varying
+      • actors: jsonb NOT NULL DEFAULT '{}'::jsonb
+
+📋 public.tickets (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • title: character varying NULL
+      • description: text NULL
+      • slug: character varying NULL
+      • external_id: character varying NULL
+      • property_id: integer NULL
+      • due_at: timestamp without time zone NULL
+      • closed_at: timestamp without time zone NULL
+      • assigned_at: timestamp without time zone NULL
+      • assignee_id: integer NULL
+      • author_id: integer NULL
+      • priority: character varying NULL
+      • status: character varying NULL
+      • deleted_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • reported_by_id: integer NULL
+      • number: character varying NULL
+      • department: character varying NULL
+      • escalation: character varying NULL
+      • reported_by_ho: boolean NULL DEFAULT false
+      • author_type: character varying NULL
+      • hold_reason: character varying NULL
+      • hold_expiry: timestamp without time zone NULL
+      • service_type: character varying NULL
+      • category_id: integer NULL
+      • sub_category_id: integer NULL
+      • rooms: ARRAY NULL DEFAULT '{}'::character varying[]
+      • ticket_type: character varying NULL
+      • property_type: character varying NULL
+      • visible_to_ho: boolean NULL DEFAULT true
+
+📋 public.tiers (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • code: character varying NULL
+      • sequence: integer NULL
+      • min_nights: integer NULL
+      • max_nights: integer NULL
+      • percent: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • data: jsonb NULL
+      • discount_percentage: numeric NULL
+
+📋 public.users (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • mobile_verified: boolean NULL
+      • email_verified: boolean NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • avatar: character varying NULL
+      • contact_id: integer NULL
+      • correct_mobile: boolean NULL DEFAULT false
+      • to_be_deleted: boolean NULL DEFAULT false
+      • deleted_at: timestamp without time zone NULL
+      • country_code: character varying NULL
+      • unconfirmed_email: character varying NULL
+      • unconfirmed_mobile: character varying NULL
+      • country_id: integer NULL
+      • tier_id: bigint NULL
+      • sign_up_referral_code: character varying NULL
+
+📋 public.users_backup (BASE TABLE)
+   📝 Columns:
+      • id: bigint NULL
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • mobile_verified: boolean NULL
+      • email_verified: boolean NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • avatar: character varying NULL
+      • contact_id: integer NULL
+      • correct_mobile: boolean NULL
+      • to_be_deleted: boolean NULL
+      • deleted_at: timestamp without time zone NULL
+      • country_code: character varying NULL
+      • unconfirmed_email: character varying NULL
+      • unconfirmed_mobile: character varying NULL
+
+📋 public.utm_mappings (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • contact_number: character varying NULL
+      • source: character varying NULL
+      • medium: character varying NULL
+      • campaign: character varying NULL
+      • content: character varying NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.vendors (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • name: character varying NULL
+      • pan_card: character varying NULL
+      • service_type: ARRAY NULL
+      • lohono_commission: numeric NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+      • rental_location_id: ARRAY NULL
+      • deleted_at: timestamp without time zone NULL
+      • commission_type: character varying NULL
+      • contact_name: character varying NULL
+      • contact_number: character varying NULL
+      • active: boolean NULL DEFAULT true
+      • settings: jsonb NULL
+      • label: character varying NULL
+      • category_type: character varying NULL
+
+📋 public.versions (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • item_type: character varying NOT NULL
+      • item_id: bigint NOT NULL
+      • event: character varying NOT NULL
+      • whodunnit: character varying NULL
+      • created_at: timestamp without time zone NULL
+      • object: jsonb NULL
+      • object_changes: jsonb NULL
+      • item_subtype: character varying NULL
+      • request_id: character varying NULL
+      • meta: jsonb NULL DEFAULT '{}'::jsonb
+
+📋 public.videos (BASE TABLE)
+   🔑 Primary Keys:
+      • id (bigint)
+   📝 Columns:
+      • property_id: integer NULL
+      • video_id: character varying NULL
+      • sequence: integer NULL
+      • created_at: timestamp without time zone NOT NULL
+      • updated_at: timestamp without time zone NOT NULL
+
+📋 public.view_rental (VIEW)
+   📝 Columns:
+      • id: bigint NULL
+      • slug: character varying NULL
+      • message: text NULL
+      • min_budget: numeric NULL
+      • status: character varying NULL
+      • source: character varying NULL
+      • check_in: date NULL
+      • check_out: date NULL
+      • current_stage: character varying NULL
+      • source_city: character varying NULL
+      • source_country: character varying NULL
+      • group_size: integer NULL
+      • adults_count: integer NULL
+      • children_count: integer NULL
+      • visit_purpose: character varying NULL
+      • enquired_at: timestamp without time zone NULL
+      • created_at: timestamp without time zone NULL
+      • updated_at: timestamp without time zone NULL
+      • poc_exec_id: bigint NULL
+      • poc_head_id: bigint NULL
+      • rental_location_id: integer NULL
+      • max_budget: numeric NULL
+      • meta: jsonb NULL
+      • agent_id: integer NULL
+      • name: character varying NULL
+      • email: character varying NULL
+      • mobile: character varying NULL
+      • grm_exec_id: integer NULL
+      • brand_id: integer NULL
+      • damage_frozen: boolean NULL
+      • security_deposit_refunded: boolean NULL
+      • lead_completed_at: timestamp without time zone NULL
+      • maal_laao_at: timestamp without time zone NULL
+      • deposit_refunded_at: timestamp without time zone NULL
+      • source_info: jsonb NULL
+      • country_code: character varying NULL
+      • platform_id: integer NULL
+      • country_id: integer NULL
+      • home_owner_id: bigint NULL

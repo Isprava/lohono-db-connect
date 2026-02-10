@@ -19,5 +19,12 @@
     "lohono-mcp-client/src/**/*",
     "shared/observability/src/**/*"
   ],
-  "exclude": ["node_modules", "dist", "lohono-chat-client"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "lohono-chat-client",
+    "**/__tests__/**/*",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

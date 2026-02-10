@@ -25,8 +25,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy rules config
-COPY config/ ./config/
+# Copy database config and schema
+COPY database/ ./database/
 
 # Environment defaults
 ENV NODE_ENV=production
@@ -35,7 +35,7 @@ ENV DB_PORT=5432
 ENV DB_USER=lohono_api
 ENV DB_NAME=lohono_api_production
 ENV DB_PASSWORD=lohono_api_password
-ENV SALES_FUNNEL_RULES_PATH=/app/config/sales_funnel_rules_v2.yml
+ENV SALES_FUNNEL_RULES_PATH=/app/database/config/sales_funnel_rules_v2.yml
 ENV PORT=3000
 
 # Expose SSE port

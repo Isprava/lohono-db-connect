@@ -51,6 +51,25 @@ down: ## Stop and remove all containers
 restart: ## Restart all services
 	$(COMPOSE) restart
 
+.PHONY: service-down
+service-down: ## Stop and remove a single service (usage: make service-down SERVICE=mcp-server)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make service-down SERVICE=<service-name>"; \
+		echo "Available services: $(SERVICES)"; \
+		exit 1; \
+	fi
+	$(COMPOSE) stop $(SERVICE)
+	$(COMPOSE) rm -f $(SERVICE)
+
+.PHONY: service-up
+service-up: env ## Build and start a single service (usage: make service-up SERVICE=mcp-server)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make service-up SERVICE=<service-name>"; \
+		echo "Available services: $(SERVICES)"; \
+		exit 1; \
+	fi
+	$(COMPOSE) up -d --build $(SERVICE)
+
 .PHONY: build
 build: ## Build all Docker images (no cache)
 	$(COMPOSE) build --no-cache

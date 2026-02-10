@@ -43,9 +43,33 @@ export async function connectMCP(sseUrl: string): Promise<void> {
 
 /**
  * Returns MCP tool definitions formatted for the Claude Messages API.
+ * Falls back to startup cache if no user email provided.
  */
 export function getToolsForClaude(): ClaudeTool[] {
-  return cachedTools.map((t) => ({
+  return cachedTools.map(toClaudeTool);
+}
+
+/**
+ * Fetch tools the user has access to from the MCP server and return
+ * them formatted for the Claude Messages API. Results are cached per user.
+ */
+export async function getToolsForUser(userEmail: string): Promise<ClaudeTool[]> {
+  const cached = userToolsCache.get(userEmail);
+  if (cached && Date.now() - cached.fetchedAt < USER_TOOLS_CACHE_TTL_MS) {
+    return cached.tools;
+  }
+
+  const result = await mcpClient.listTools({
+    _meta: { user_email: userEmail },
+  } as Parameters<typeof mcpClient.listTools>[0]);
+
+  const tools = (result.tools as MCPTool[]).map(toClaudeTool);
+  userToolsCache.set(userEmail, { tools, fetchedAt: Date.now() });
+  return tools;
+}
+
+function toClaudeTool(t: MCPTool): ClaudeTool {
+  return {
     name: t.name,
     description: t.description || "",
     input_schema: {
@@ -53,20 +77,28 @@ export function getToolsForClaude(): ClaudeTool[] {
       properties: t.inputSchema.properties,
       required: t.inputSchema.required,
     },
-  }));
+  };
 }
+
+const USER_TOOLS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const userToolsCache = new Map<string, { tools: ClaudeTool[]; fetchedAt: number }>();
 
 /**
  * Invoke a tool on the MCP server and return the text result.
  */
 export async function callTool(
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  userEmail?: string
 ): Promise<string> {
   return withMCPToolSpan(
     { toolName: name, toolArgs: args },
     async (span) => {
-      const result = await mcpClient.callTool({ name, arguments: args });
+      const result = await mcpClient.callTool({
+        name,
+        arguments: args,
+        _meta: userEmail ? { user_email: userEmail } : undefined,
+      } as Parameters<typeof mcpClient.callTool>[0]);
 
       // MCP returns content as array of { type, text } blocks
       const textParts = (result.content as { type: string; text: string }[])

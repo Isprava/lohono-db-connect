@@ -1,0 +1,1014 @@
+# ============================================================================
+# SALE QUERY TEMPLATE - PARAMETERIZED
+# ============================================================================
+# Purpose: Define the canonical query for calculating sales with parameters
+# Version: 1.0
+# Created: 2026-02-09
+# ============================================================================
+
+query_template:
+  name: "calculate_sales"
+  description: "Calculate total sales (Maal Laao) from closed/won opportunities"
+  stage: "Sale"
+  business_term: "Maal Laao (Hindi: bring the goods/money - closed deal)"
+  
+  # Parameters that can be injected
+  parameters:
+    start_date:
+      type: "date"
+      format: "YYYY-MM-DD"
+      description: "Start date for the reporting period"
+      example: "2026-01-01"
+      required: true
+      
+    end_date:
+      type: "date"
+      format: "YYYY-MM-DD"
+      description: "End date for the reporting period"
+      example: "2026-01-31"
+      required: true
+      
+    timezone_offset:
+      type: "interval"
+      description: "Timezone conversion for IST"
+      default: "330 minutes"
+      alternative: "5 hours 30 minutes"
+      note: "Use one format consistently throughout the query"
+      
+    slug_exclusions:
+      type: "array"
+      description: "Banned opportunity slugs to exclude"
+      default: ['569657C6', '5EB1A14A', '075E54DF', 'd-0010K00001mCaxRQAS', 'd-0012800001IqdMOAAZ', 'd-0012800001Y94DuAAJ', 'd-0012800001Y947rAAB', 'd-00Q2800000cjE3iEAE']
+      optional: true
+      note: "Sales has additional banned slugs compared to other stages"
+      
+    vertical:
+      type: "string"
+      description: "Business vertical filter"
+      default: "development"
+      optional: false
+
+  # SQL template with placeholders (using tasks approach)
+  sql_template: |
+    SELECT COUNT(slug) AS sales
+    FROM
+    (
+        SELECT
+            DATE(tasks.performed_at + INTERVAL '{{timezone_offset}}') AS resolved_at_date_ist,
+            RANK() OVER (
+                PARTITION BY activities.leadable_id
+                ORDER BY tasks.performed_at + INTERVAL '{{timezone_offset}}'
+            ) AS ranking,
+            tasks.rating,
+            development_opportunities.source,
+            development_opportunities.slug
+        FROM tasks
+        INNER JOIN activities
+            ON tasks.id = activities.feedable_id
+        INNER JOIN development_opportunities
+            ON development_opportunities.id = activities.leadable_id
+        WHERE activities.feedable_type = 'Task'
+          AND activities.leadable_type = 'Development::Opportunity'
+          AND tasks.rating = 'maal_laao'
+          AND development_opportunities.vertical = '{{vertical}}'
+          {{#if slug_exclusions}}
+          AND development_opportunities.slug NOT IN ({{slug_exclusions}})
+          {{/if}}
+    ) x
+    WHERE ranking = 1
+      AND DATE(resolved_at_date_ist)
+          BETWEEN '{{start_date}}' AND '{{end_date}}';
+
+  # Alternative query using maal_laao_at timestamp (simpler)
+  alternative_sql_template: |
+    SELECT COUNT(DISTINCT(slug)) AS sales
+    FROM development_opportunities
+    WHERE maal_laao_at IS NOT NULL
+      AND DATE(maal_laao_at + INTERVAL '{{timezone_offset}}') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}'
+      {{#if slug_exclusions}}
+      AND slug NOT IN ({{slug_exclusions}})
+      {{/if}}
+      AND vertical = '{{vertical}}';
+
+  # Example usage
+  example_queries:
+    
+    january_2026_tasks_approach: |
+      -- January 2026 sales (using tasks with rating='maal_laao')
+      SELECT COUNT(slug) AS sales
+      FROM
+      (
+          SELECT
+              DATE(tasks.performed_at + INTERVAL '5 hours 30 minutes') AS resolved_at_date_ist,
+              RANK() OVER (
+                  PARTITION BY activities.leadable_id
+                  ORDER BY tasks.performed_at + INTERVAL '5 hours 30 minutes'
+              ) AS ranking,
+              tasks.rating,
+              development_opportunities.source,
+              development_opportunities.slug
+          FROM tasks
+          INNER JOIN activities
+              ON tasks.id = activities.feedable_id
+          INNER JOIN development_opportunities
+              ON development_opportunities.id = activities.leadable_id
+          WHERE activities.feedable_type = 'Task'
+            AND activities.leadable_type = 'Development::Opportunity'
+            AND tasks.rating = 'maal_laao'
+            AND development_opportunities.vertical = 'development'
+            AND development_opportunities.slug NOT IN (
+                '569657C6', '5EB1A14A', '075E54DF',
+                'd-0010K00001mCaxRQAS', 'd-0012800001IqdMOAAZ', 
+                'd-0012800001Y94DuAAJ', 'd-0012800001Y947rAAB', 
+                'd-00Q2800000cjE3iEAE'
+            )
+      ) x
+      WHERE ranking = 1
+        AND DATE(resolved_at_date_ist)
+            BETWEEN '2026-01-01' AND '2026-01-31';
+    
+    january_2026_simple: |
+      -- January 2026 sales (using maal_laao_at)
+      SELECT COUNT(DISTINCT(slug)) AS sales
+      FROM development_opportunities
+      WHERE maal_laao_at IS NOT NULL
+        AND DATE(maal_laao_at + INTERVAL '330 minutes') 
+            BETWEEN '2026-01-01' AND '2026-01-31'
+        AND slug NOT IN (
+            '569657C6', '5EB1A14A', '075E54DF',
+            'd-0010K00001mCaxRQAS', 'd-0012800001IqdMOAAZ',
+            'd-0012800001Y94DuAAJ', 'd-0012800001Y947rAAB',
+            'd-00Q2800000cjE3iEAE'
+        )
+        AND vertical = 'development';
+    
+    mtd_current_month: |
+      -- Month-to-date (current month) sales
+      SELECT COUNT(DISTINCT(slug)) AS sales
+      FROM development_opportunities
+      WHERE maal_laao_at IS NOT NULL
+        AND DATE(maal_laao_at + INTERVAL '330 minutes') >= DATE_TRUNC('month', CURRENT_DATE)
+        AND DATE(maal_laao_at + INTERVAL '330 minutes') < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+        AND DATE_PART('day', maal_laao_at + INTERVAL '330 minutes') <= DATE_PART('day', NOW() + INTERVAL '330 minutes')
+        AND slug NOT IN (
+            '569657C6', '5EB1A14A', '075E54DF',
+            'd-0010K00001mCaxRQAS', 'd-0012800001IqdMOAAZ',
+            'd-0012800001Y94DuAAJ', 'd-0012800001Y947rAAB',
+            'd-00Q2800000cjE3iEAE'
+        )
+        AND vertical = 'development';
+
+  # Query breakdown explanation
+  query_breakdown:
+    
+    tasks_approach:
+      
+      step_1_join_tasks_to_activities:
+        description: "Join tasks to activities to link tasks to opportunities"
+        tables_involved:
+          - "tasks"
+          - "activities"
+          - "development_opportunities"
+        join_sequence:
+          - "tasks.id = activities.feedable_id (polymorphic)"
+          - "activities.leadable_id = development_opportunities.id (polymorphic)"
+        filters:
+          - "activities.feedable_type = 'Task'"
+          - "activities.leadable_type = 'Development::Opportunity'"
+          - "tasks.rating = 'maal_laao'"
+          
+      step_2_rank_by_date:
+        description: "Rank tasks to get the FIRST maal_laao task per opportunity"
+        window_function: "RANK() OVER (PARTITION BY leadable_id ORDER BY performed_at ASC)"
+        reason: "An opportunity might have multiple maal_laao tasks (corrections, updates)"
+        select_rank: 1
+        note: "We only want the first sale date"
+        
+      step_3_filter_date_range:
+        description: "Filter by date range on when the sale occurred"
+        timestamp_column: "resolved_at_date_ist"
+        filter: "DATE(resolved_at_date_ist) BETWEEN start_date AND end_date"
+        
+      step_4_count:
+        description: "Count slugs to get total sales"
+        count_method: "COUNT(slug)"
+        note: "Not using DISTINCT because ranking=1 already ensures uniqueness"
+        
+    simple_approach:
+      
+      step_1_filter_maal_laao:
+        description: "Filter opportunities where maal_laao_at is set"
+        timestamp_column: "maal_laao_at"
+        condition: "maal_laao_at IS NOT NULL"
+        
+      step_2_date_range:
+        description: "Filter by date range"
+        filter: "DATE(maal_laao_at + INTERVAL) BETWEEN start_date AND end_date"
+        
+      step_3_exclusions:
+        description: "Apply slug exclusions and vertical filter"
+        
+      step_4_count_distinct:
+        description: "Count distinct slugs"
+        count_method: "COUNT(DISTINCT slug)"
+
+  # Alternative approach explanation
+  alternative_approaches:
+    
+    tasks_with_rating:
+      name: "Using tasks table with rating='maal_laao'"
+      description: "Most accurate - tracks the actual maal_laao task"
+      
+      pros:
+        - "Most accurate - captures the actual sale event"
+        - "Tracks who performed the task"
+        - "Can include additional task metadata"
+        - "Handles multiple maal_laao tasks per opportunity"
+        - "Audit trail of the sale event"
+        
+      cons:
+        - "More complex query"
+        - "Requires multiple joins (tasks → activities → opportunities)"
+        - "Window function for ranking"
+        - "Slower performance"
+        
+      when_to_use:
+        - "Need accurate sale date"
+        - "Need to track who closed the deal"
+        - "Audit trail is important"
+        - "Handling data quality issues with multiple tasks"
+        
+      use_cases:
+        - "Financial reporting"
+        - "Commission calculations"
+        - "Executive dashboards"
+        - "Compliance reporting"
+      
+    maal_laao_at_field:
+      name: "Using maal_laao_at timestamp field"
+      description: "Simpler query using denormalized field"
+      
+      pros:
+        - "Simple query"
+        - "Fast performance"
+        - "No joins needed"
+        - "Direct timestamp available"
+        
+      cons:
+        - "Less accurate if timestamp was manually edited"
+        - "No audit trail of who closed"
+        - "Doesn't capture task details"
+        
+      when_to_use:
+        - "Performance is critical"
+        - "Data quality is reliable"
+        - "Don't need task details"
+        
+      use_cases:
+        - "Real-time dashboards"
+        - "Quick metrics"
+        - "Internal reports"
+        
+      timestamp_column: "maal_laao_at"
+      meaning: "When the opportunity was marked as 'Maal Laao' (closed/won)"
+
+# ============================================================================
+# SCHEMA RELATIONSHIPS - SALES
+# ============================================================================
+
+schema_relationships:
+  description: "Foreign key relationships used in sale queries"
+  
+  primary_join_chain:
+    description: "Main join path for sale calculation using tasks"
+    
+    join_sequence:
+      
+      1_tasks_to_activities:
+        from_table: "tasks"
+        to_table: "activities"
+        join_type: "INNER JOIN"
+        join_condition:
+          column: "activities.feedable_id"
+          references: "tasks.id"
+          note: "Polymorphic relationship"
+        additional_condition:
+          column: "activities.feedable_type"
+          value: "'Task'"
+          note: "Polymorphic type discriminator"
+        relationship: "1:N (one task can be in multiple activity feeds)"
+        purpose: "Link tasks to the activity feed"
+        
+      2_activities_to_opportunities:
+        from_table: "activities"
+        to_table: "development_opportunities"
+        join_type: "INNER JOIN"
+        join_condition:
+          column: "activities.leadable_id"
+          references: "development_opportunities.id"
+          note: "Polymorphic relationship"
+        additional_condition:
+          column: "activities.leadable_type"
+          value: "'Development::Opportunity'"
+          note: "Polymorphic type discriminator"
+        relationship: "N:1 (many activities belong to one opportunity)"
+        purpose: "Link activities to the opportunity they belong to"
+        
+  tables_involved:
+    
+    tasks:
+      role: "Source table - tracks sale tasks"
+      columns_used:
+        - name: "id"
+          purpose: "Primary key, join to activities"
+        - name: "performed_at"
+          purpose: "Timestamp when task was performed (sale date)"
+        - name: "rating"
+          purpose: "Task outcome - 'maal_laao' indicates a sale"
+        - name: "medium_id"
+          purpose: "How the task was performed (optional)"
+        - name: "minutes"
+          purpose: "Duration of task (optional)"
+      filters_applied:
+        - "rating = 'maal_laao'"
+      
+      rating_values:
+        maal_laao: "Sale closed (Maal Laao)"
+        closed: "Opportunity closed (lost)"
+        warm: "Warm lead"
+        cold: "Cold lead"
+        hot: "Hot lead"
+        
+    activities:
+      role: "Junction table - links tasks to opportunities"
+      columns_used:
+        - name: "id"
+          purpose: "Primary key"
+        - name: "feedable_id"
+          purpose: "Foreign key to task (polymorphic)"
+        - name: "feedable_type"
+          purpose: "Polymorphic type = 'Task'"
+        - name: "leadable_id"
+          purpose: "Foreign key to opportunity (polymorphic)"
+        - name: "leadable_type"
+          purpose: "Polymorphic type = 'Development::Opportunity'"
+        - name: "sequence"
+          purpose: "Order of activities"
+      filters_applied:
+        - "feedable_type = 'Task'"
+        - "leadable_type = 'Development::Opportunity'"
+      
+      polymorphic_relationships:
+        feedable:
+          type_column: "feedable_type"
+          id_column: "feedable_id"
+          points_to: "tasks, notes, documents, etc."
+          
+        leadable:
+          type_column: "leadable_type"
+          id_column: "leadable_id"
+          points_to: "development_opportunities, etc."
+          
+    development_opportunities:
+      role: "Base table - opportunities being tracked"
+      columns_used:
+        - name: "id"
+          purpose: "Primary key, join from activities"
+        - name: "slug"
+          purpose: "Unique identifier for counting"
+        - name: "vertical"
+          purpose: "Filter for 'development' opportunities"
+        - name: "maal_laao_at"
+          purpose: "Alternative timestamp (denormalized from tasks)"
+        - name: "source"
+          purpose: "Optional - track source of sale"
+        - name: "agent_id"
+          purpose: "Optional - track agent who brought the deal"
+        - name: "poc_exec_id"
+          purpose: "Optional - track sales exec"
+      filters_applied:
+        - "vertical = 'development'"
+        - "slug NOT IN (banned slugs)"
+      
+      funnel_completion:
+        stage_1: "enquired_at → Lead"
+        stage_2: "lead_completed_at → Prospect"
+        stage_3: "prospect_completed_at → Account"
+        stage_4: "maal_laao_at → Sale (END)"
+
+# ============================================================================
+# COMMON JOIN PATTERNS FOR SALES
+# ============================================================================
+
+common_join_patterns:
+  description: "Frequently used join patterns for sale analysis"
+  
+  # Get sales with agent information
+  sales_with_agents: |
+    SELECT 
+        x.slug,
+        x.resolved_at_date_ist AS sale_date,
+        agents.name AS agent_name,
+        agents.company_name,
+        agents.agent_type,
+        agents.commission
+    FROM
+    (
+        SELECT
+            DATE(tasks.performed_at + INTERVAL '330 minutes') AS resolved_at_date_ist,
+            RANK() OVER (
+                PARTITION BY activities.leadable_id
+                ORDER BY tasks.performed_at + INTERVAL '330 minutes'
+            ) AS ranking,
+            development_opportunities.slug,
+            development_opportunities.agent_id
+        FROM tasks
+        INNER JOIN activities
+            ON tasks.id = activities.feedable_id
+        INNER JOIN development_opportunities
+            ON development_opportunities.id = activities.leadable_id
+        WHERE activities.feedable_type = 'Task'
+          AND activities.leadable_type = 'Development::Opportunity'
+          AND tasks.rating = 'maal_laao'
+    ) x
+    LEFT JOIN agents ON agents.id = x.agent_id
+    WHERE x.ranking = 1
+      AND DATE(x.resolved_at_date_ist) BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get sales with POC staff (who closed the deal)
+  sales_with_poc: |
+    SELECT 
+        x.slug,
+        x.resolved_at_date_ist AS sale_date,
+        poc_exec.name AS poc_exec_name,
+        poc_head.name AS poc_head_name,
+        poc_exec.source_region,
+        poc_exec.email AS poc_exec_email
+    FROM
+    (
+        SELECT
+            DATE(tasks.performed_at + INTERVAL '330 minutes') AS resolved_at_date_ist,
+            RANK() OVER (
+                PARTITION BY activities.leadable_id
+                ORDER BY tasks.performed_at + INTERVAL '330 minutes'
+            ) AS ranking,
+            development_opportunities.slug,
+            development_opportunities.poc_exec_id,
+            development_opportunities.poc_head_id
+        FROM tasks
+        INNER JOIN activities
+            ON tasks.id = activities.feedable_id
+        INNER JOIN development_opportunities
+            ON development_opportunities.id = activities.leadable_id
+        WHERE activities.feedable_type = 'Task'
+          AND activities.leadable_type = 'Development::Opportunity'
+          AND tasks.rating = 'maal_laao'
+    ) x
+    LEFT JOIN staffs AS poc_exec ON poc_exec.id = x.poc_exec_id
+    LEFT JOIN staffs AS poc_head ON poc_head.id = x.poc_head_id
+    WHERE x.ranking = 1
+      AND DATE(x.resolved_at_date_ist) BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get complete funnel for sales (full journey)
+  sales_complete_funnel: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.name,
+        development_opportunities.enquired_at + INTERVAL '330 minutes' AS lead_date,
+        development_opportunities.lead_completed_at + INTERVAL '330 minutes' AS prospect_date,
+        development_opportunities.prospect_completed_at + INTERVAL '330 minutes' AS account_date,
+        development_opportunities.maal_laao_at + INTERVAL '330 minutes' AS sale_date,
+        -- Calculate all durations
+        DATE(development_opportunities.lead_completed_at + INTERVAL '330 minutes') - 
+          DATE(development_opportunities.enquired_at + INTERVAL '330 minutes') AS l2p_days,
+        DATE(development_opportunities.prospect_completed_at + INTERVAL '330 minutes') - 
+          DATE(development_opportunities.lead_completed_at + INTERVAL '330 minutes') AS p2a_days,
+        DATE(development_opportunities.maal_laao_at + INTERVAL '330 minutes') - 
+          DATE(development_opportunities.prospect_completed_at + INTERVAL '330 minutes') AS a2s_days,
+        DATE(development_opportunities.maal_laao_at + INTERVAL '330 minutes') - 
+          DATE(development_opportunities.enquired_at + INTERVAL '330 minutes') AS total_funnel_days
+    FROM development_opportunities
+    WHERE development_opportunities.maal_laao_at IS NOT NULL
+      AND DATE(development_opportunities.maal_laao_at + INTERVAL '330 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}'
+      AND development_opportunities.slug NOT IN (
+          '569657C6', '5EB1A14A', '075E54DF',
+          'd-0010K00001mCaxRQAS', 'd-0012800001IqdMOAAZ',
+          'd-0012800001Y94DuAAJ', 'd-0012800001Y947rAAB',
+          'd-00Q2800000cjE3iEAE'
+      )
+    ORDER BY development_opportunities.maal_laao_at DESC;
+  
+  # Get sales with source breakdown
+  sales_by_source: |
+    SELECT 
+        development_opportunities.source,
+        COUNT(DISTINCT development_opportunities.slug) AS sale_count,
+        CASE 
+          WHEN source = 'agent' THEN 'Agent'
+          WHEN source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') THEN 'Digital'
+          WHEN source IN ('lohono.com','lohono') THEN 'Lohono'
+          WHEN source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') THEN 'Reference + Word of Mouth'
+          WHEN source = 'repeat_client' THEN 'Repeat Client'
+          ELSE 'Other' 
+        END AS source_category
+    FROM development_opportunities
+    WHERE development_opportunities.maal_laao_at IS NOT NULL
+      AND DATE(development_opportunities.maal_laao_at + INTERVAL '330 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}'
+      AND development_opportunities.slug NOT IN (
+          '569657C6', '5EB1A14A', '075E54DF',
+          'd-0010K00001mCaxRQAS', 'd-0012800001IqdMOAAZ',
+          'd-0012800001Y94DuAAJ', 'd-0012800001Y947rAAB',
+          'd-00Q2800000cjE3iEAE'
+      )
+    GROUP BY development_opportunities.source;
+
+# ============================================================================
+# QUERY OPTIMIZATION & PERFORMANCE
+# ============================================================================
+
+query_optimization:
+  
+  performance_considerations:
+    
+    tasks_approach_cost:
+      description: "Multiple joins and window function are expensive"
+      impact: "Can be slow on large datasets"
+      mitigation:
+        - "Add indexes on tasks (rating, performed_at)"
+        - "Add indexes on activities (feedable_id, leadable_id)"
+        - "Consider maal_laao_at for better performance"
+        
+    index_recommendations:
+      - table: "tasks"
+        columns: ["rating", "performed_at"]
+        type: "composite index"
+        reason: "Supports filtering by rating and ordering"
+        priority: "HIGH"
+        
+      - table: "tasks"
+        columns: ["rating"]
+        type: "single column index"
+        reason: "Fast filtering for maal_laao tasks"
+        priority: "HIGH"
+        
+      - table: "activities"
+        columns: ["feedable_id", "feedable_type"]
+        type: "composite index"
+        reason: "Supports polymorphic join from tasks"
+        priority: "HIGH"
+        
+      - table: "activities"
+        columns: ["leadable_id", "leadable_type"]
+        type: "composite index"
+        reason: "Supports polymorphic join to opportunities"
+        priority: "HIGH"
+        
+      - table: "development_opportunities"
+        columns: ["maal_laao_at"]
+        type: "single column index"
+        reason: "Supports alternative query approach"
+        priority: "VERY HIGH"
+        
+      - table: "development_opportunities"
+        columns: ["vertical"]
+        type: "single column index"
+        reason: "Supports filtering by vertical"
+        priority: "MEDIUM"
+        
+    query_plan_analysis:
+      tasks_approach:
+        expected_operations:
+          - "Index Scan on tasks (rating='maal_laao')"
+          - "Hash Join with activities"
+          - "Hash Join with development_opportunities"
+          - "Window Aggregate (RANK)"
+          - "Filter on ranking = 1"
+          - "Count"
+        estimated_cost: "High (multiple joins + window function)"
+        
+      simple_approach:
+        expected_operations:
+          - "Index Scan on development_opportunities (maal_laao_at)"
+          - "Filter on date range"
+          - "Count Distinct"
+        estimated_cost: "Low (single table scan)"
+
+  query_variants:
+    
+    tasks_approach:
+      pros:
+        - "Most accurate - actual task performed"
+        - "Tracks who performed the sale task"
+        - "Handles multiple maal_laao tasks"
+        - "Audit trail"
+        - "Can include task metadata"
+        
+      cons:
+        - "Complex query (3 table joins)"
+        - "Window function overhead"
+        - "Slower performance"
+        
+      use_when: "Accuracy and audit trail are critical"
+      
+      typical_use_cases:
+        - "Commission calculations"
+        - "Sales performance tracking"
+        - "Financial reporting"
+        - "Compliance audits"
+      
+    maal_laao_at_approach:
+      pros:
+        - "Simple query"
+        - "Very fast performance"
+        - "No joins needed"
+        - "Easy to understand"
+        
+      cons:
+        - "Less accurate if manually edited"
+        - "No task metadata"
+        - "No audit of who closed"
+        
+      use_when: "Performance is critical and data is clean"
+      
+      typical_use_cases:
+        - "Real-time dashboards"
+        - "Quick reports"
+        - "Executive summaries"
+
+# ============================================================================
+# BUSINESS LOGIC & VALIDATION
+# ============================================================================
+
+business_logic:
+  
+  sale_definition:
+    description: "What constitutes a 'sale' (Maal Laao)"
+    business_term: "Maal Laao"
+    hindi_meaning: "Bring the goods/money"
+    english_equivalent: "Closed/Won Deal"
+    
+    criteria:
+      - "A task with rating='maal_laao' exists for the opportunity"
+      - "OR maal_laao_at field is set on the opportunity"
+      - "The sale date falls within the reporting period"
+      - "Opportunity is not a banned slug"
+      - "Opportunity is in the 'development' vertical"
+      
+    prerequisite_stages:
+      stage_1: "enquired_at IS NOT NULL (was a lead)"
+      stage_2: "lead_completed_at IS NOT NULL (was a prospect)"
+      stage_3: "prospect_completed_at IS NOT NULL (was an account)"
+      stage_4: "maal_laao_at IS NOT NULL (now a sale)"
+      note: "Complete funnel progression expected"
+      
+  task_rating_system:
+    description: "Understanding task ratings"
+    
+    ratings:
+      maal_laao:
+        meaning: "Sale closed (won)"
+        hindi: "Maal Laao"
+        action: "Mark opportunity as sold"
+        sets_field: "maal_laao_at"
+        
+      closed:
+        meaning: "Opportunity closed (lost)"
+        action: "Mark as closed/lost"
+        requires: "closed_reason"
+        
+      hot:
+        meaning: "Hot lead - very interested"
+        action: "High priority follow-up"
+        
+      warm:
+        meaning: "Warm lead - some interest"
+        action: "Regular follow-up"
+        
+      cold:
+        meaning: "Cold lead - low interest"
+        action: "Low priority follow-up"
+        
+  multiple_maal_laao_tasks:
+    description: "Handling opportunities with multiple maal_laao tasks"
+    
+    scenario: "Opportunity might have multiple maal_laao tasks due to:"
+    reasons:
+      - "Data entry corrections"
+      - "Task duplication"
+      - "Status changes (sold → not sold → sold again)"
+      - "System migrations"
+      
+    solution: "Use RANK() to select the FIRST maal_laao task"
+    ranking_logic: "PARTITION BY leadable_id ORDER BY performed_at ASC"
+    select: "ranking = 1"
+    
+    why_first: "The first maal_laao task represents the original sale date"
+    
+  exclusions:
+    
+    slug_exclusions:
+      values: 
+        - '569657C6'
+        - '5EB1A14A'
+        - '075E54DF'
+        - 'd-0010K00001mCaxRQAS'
+        - 'd-0012800001IqdMOAAZ'
+        - 'd-0012800001Y94DuAAJ'
+        - 'd-0012800001Y947rAAB'
+        - 'd-00Q2800000cjE3iEAE'
+      reason: "Test opportunities and banned slugs"
+      note: "Sales has MORE banned slugs than other stages"
+      
+    no_source_exclusion:
+      note: "DnB source exclusion does NOT apply to sales (only to leads)"
+      reason: "At sale stage, all sources are equally valid"
+      
+  conversion_metrics:
+    
+    account_to_sale:
+      metric_name: "A2S Conversion Rate"
+      formula: "(Sales / Accounts) * 100"
+      benchmark: "Industry average: 15-30%"
+      
+    account_to_sale_duration:
+      metric_name: "A2S Duration (Sales Cycle)"
+      calculation: "maal_laao_at - prospect_completed_at"
+      measured_in: "days"
+      typical_range: "45-120 days"
+      
+    total_funnel:
+      metric_name: "Lead to Sale Conversion Rate"
+      formula: "(Sales / Leads) * 100"
+      benchmark: "Industry average: 2-5%"
+      
+    total_funnel_duration:
+      metric_name: "Total Sales Cycle (Lead to Sale)"
+      calculation: "maal_laao_at - enquired_at"
+      measured_in: "days"
+      typical_range: "90-180 days"
+
+# ============================================================================
+# COMPARISON WITH OTHER STAGES
+# ============================================================================
+
+comparison_with_other_stages:
+  
+  similarities:
+    all_stages:
+      - "Use timezone conversion (IST)"
+      - "Apply slug exclusions"
+      - "Filter by vertical = 'development'"
+    
+  differences:
+    
+    leads:
+      tables: "development_opportunities + enquiries"
+      timestamp: "enquired_at or created_at"
+      joins: "UNION ALL (no joins)"
+      complexity: "Simple"
+      source_exclusion: "Yes (DnB)"
+      counting: "COUNT(DISTINCT slug)"
+      
+    prospects:
+      tables: "development_opportunities + stage_histories + stages"
+      timestamp: "stage_histories.updated_at OR lead_completed_at"
+      joins: "INNER JOIN (2 joins)"
+      complexity: "Window function (RANK)"
+      source_exclusion: "No"
+      counting: "COUNT(DISTINCT slug)"
+      
+    accounts:
+      tables: "development_opportunities + stage_histories + stages"
+      timestamp: "stage_histories.updated_at OR prospect_completed_at"
+      joins: "INNER JOIN (2 joins)"
+      complexity: "Window function (RANK)"
+      source_exclusion: "No"
+      counting: "COUNT(DISTINCT slug)"
+      
+    sales:
+      tables: "development_opportunities (+ tasks + activities)"
+      timestamp: "tasks.performed_at OR maal_laao_at"
+      joins: "INNER JOIN (2 joins) OR None"
+      complexity: "Window function (RANK) OR Simple"
+      source_exclusion: "No"
+      counting: "COUNT(slug) OR COUNT(DISTINCT slug)"
+      unique_aspect: "Uses task rating system, has alternative simple approach"
+
+  complete_funnel_visualization: |
+    
+    ┌──────────────────────────────────────────────────────────────────┐
+    │               COMPLETE SALES FUNNEL PROGRESSION                   │
+    └──────────────────────────────────────────────────────────────────┘
+    
+    Lead ──────────> Prospect ──────────> Account ──────────> Sale
+      │                  │                    │                  │
+    enquired_at    lead_completed_at   prospect_completed_at  maal_laao_at
+      │                  │                    │                  │
+    From 2 tables   From stage          From stage          From tasks OR
+    (opps+enq)      histories           histories           direct field
+      │                  │                    │                  │
+    Source filter   No source filter    No source filter    No source filter
+    (exclude DnB)
+      │                  │                    │                  │
+    UNION ALL       RANK() window       RANK() window       RANK() window
+                    function            function            OR direct
+                                                            
+    ═══════════════════════════════════════════════════════════════════
+    
+    Key Timestamps:
+    • enquired_at           → When lead came in
+    • lead_completed_at     → Qualified as prospect
+    • prospect_completed_at → Converted to account
+    • maal_laao_at          → CLOSED/WON (Sale!)
+    
+    Duration Metrics:
+    • L2P: lead_completed_at - enquired_at
+    • P2A: prospect_completed_at - lead_completed_at
+    • A2S: maal_laao_at - prospect_completed_at
+    • Total: maal_laao_at - enquired_at
+
+# ============================================================================
+# VALIDATION QUERIES
+# ============================================================================
+
+validation_queries:
+  description: "Queries to validate sale calculations"
+  
+  # Compare methods
+  compare_methods: |
+    -- Compare tasks approach vs maal_laao_at approach
+    SELECT 
+        'Tasks Approach' AS method,
+        COUNT(slug) AS sale_count
+    FROM
+    (
+        SELECT
+            DATE(tasks.performed_at + INTERVAL '5 hours 30 minutes') AS resolved_at_date_ist,
+            RANK() OVER (
+                PARTITION BY activities.leadable_id
+                ORDER BY tasks.performed_at + INTERVAL '5 hours 30 minutes'
+            ) AS ranking,
+            development_opportunities.slug
+        FROM tasks
+        INNER JOIN activities ON tasks.id = activities.feedable_id
+        INNER JOIN development_opportunities ON development_opportunities.id = activities.leadable_id
+        WHERE activities.feedable_type = 'Task'
+          AND activities.leadable_type = 'Development::Opportunity'
+          AND tasks.rating = 'maal_laao'
+    ) x
+    WHERE ranking = 1
+      AND DATE(resolved_at_date_ist) BETWEEN '2026-01-01' AND '2026-01-31'
+    
+    UNION ALL
+    
+    SELECT 
+        'Maal Laao At' AS method,
+        COUNT(DISTINCT slug) AS sale_count
+    FROM development_opportunities
+    WHERE maal_laao_at IS NOT NULL
+      AND DATE(maal_laao_at + INTERVAL '330 minutes') BETWEEN '2026-01-01' AND '2026-01-31';
+  
+  # Find opportunities with multiple maal_laao tasks
+  multiple_maal_laao_tasks: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.name,
+        COUNT(*) AS maal_laao_task_count,
+        MIN(tasks.performed_at + INTERVAL '330 minutes') AS first_sale_date,
+        MAX(tasks.performed_at + INTERVAL '330 minutes') AS last_sale_date,
+        EXTRACT(DAY FROM MAX(tasks.performed_at) - MIN(tasks.performed_at)) AS days_between
+    FROM tasks
+    INNER JOIN activities ON tasks.id = activities.feedable_id
+    INNER JOIN development_opportunities ON development_opportunities.id = activities.leadable_id
+    WHERE activities.feedable_type = 'Task'
+      AND activities.leadable_type = 'Development::Opportunity'
+      AND tasks.rating = 'maal_laao'
+    GROUP BY development_opportunities.slug, development_opportunities.name
+    HAVING COUNT(*) > 1
+    ORDER BY maal_laao_task_count DESC;
+  
+  # Check for mismatches between tasks and maal_laao_at
+  data_integrity_check: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.maal_laao_at,
+        task_dates.first_maal_laao_task_date,
+        CASE 
+            WHEN development_opportunities.maal_laao_at IS NULL 
+                 AND task_dates.first_maal_laao_task_date IS NOT NULL 
+                 THEN 'Missing maal_laao_at field'
+            WHEN development_opportunities.maal_laao_at IS NOT NULL 
+                 AND task_dates.first_maal_laao_task_date IS NULL 
+                 THEN 'Missing maal_laao task'
+            WHEN DATE(development_opportunities.maal_laao_at) != DATE(task_dates.first_maal_laao_task_date)
+                 THEN 'Date mismatch'
+            ELSE 'OK'
+        END AS status,
+        ABS(EXTRACT(DAY FROM development_opportunities.maal_laao_at - task_dates.first_maal_laao_task_date)) AS days_difference
+    FROM development_opportunities
+    LEFT JOIN (
+        SELECT 
+            activities.leadable_id,
+            MIN(tasks.performed_at) AS first_maal_laao_task_date
+        FROM tasks
+        INNER JOIN activities ON tasks.id = activities.feedable_id
+        WHERE activities.feedable_type = 'Task'
+          AND activities.leadable_type = 'Development::Opportunity'
+          AND tasks.rating = 'maal_laao'
+        GROUP BY activities.leadable_id
+    ) task_dates ON task_dates.leadable_id = development_opportunities.id
+    WHERE development_opportunities.maal_laao_at IS NOT NULL
+       OR task_dates.first_maal_laao_task_date IS NOT NULL;
+  
+  # Check complete funnel for sales
+  sales_funnel_completeness: |
+    -- Verify all sales have complete funnel progression
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.enquired_at IS NOT NULL AS has_lead,
+        development_opportunities.lead_completed_at IS NOT NULL AS has_prospect,
+        development_opportunities.prospect_completed_at IS NOT NULL AS has_account,
+        development_opportunities.maal_laao_at IS NOT NULL AS has_sale,
+        CASE 
+            WHEN development_opportunities.enquired_at IS NULL THEN 'Missing lead stage'
+            WHEN development_opportunities.lead_completed_at IS NULL THEN 'Missing prospect stage'
+            WHEN development_opportunities.prospect_completed_at IS NULL THEN 'Missing account stage'
+            WHEN development_opportunities.maal_laao_at IS NULL THEN 'Should not happen'
+            ELSE 'Complete funnel'
+        END AS funnel_status
+    FROM development_opportunities
+    WHERE development_opportunities.maal_laao_at IS NOT NULL
+      AND DATE(development_opportunities.maal_laao_at + INTERVAL '330 minutes') 
+          BETWEEN '2026-01-01' AND '2026-01-31'
+      AND (
+          development_opportunities.enquired_at IS NULL 
+          OR development_opportunities.lead_completed_at IS NULL
+          OR development_opportunities.prospect_completed_at IS NULL
+      );
+  
+  # Sales velocity analysis
+  sales_velocity: |
+    -- Analyze sales cycle duration
+    SELECT 
+        DATE_TRUNC('month', development_opportunities.maal_laao_at + INTERVAL '330 minutes') AS sale_month,
+        COUNT(DISTINCT development_opportunities.slug) AS sale_count,
+        AVG(EXTRACT(DAY FROM development_opportunities.maal_laao_at - development_opportunities.enquired_at)) AS avg_total_cycle_days,
+        AVG(EXTRACT(DAY FROM development_opportunities.lead_completed_at - development_opportunities.enquired_at)) AS avg_l2p_days,
+        AVG(EXTRACT(DAY FROM development_opportunities.prospect_completed_at - development_opportunities.lead_completed_at)) AS avg_p2a_days,
+        AVG(EXTRACT(DAY FROM development_opportunities.maal_laao_at - development_opportunities.prospect_completed_at)) AS avg_a2s_days
+    FROM development_opportunities
+    WHERE development_opportunities.maal_laao_at IS NOT NULL
+      AND development_opportunities.enquired_at IS NOT NULL
+      AND DATE(development_opportunities.maal_laao_at + INTERVAL '330 minutes') >= '2025-01-01'
+    GROUP BY DATE_TRUNC('month', development_opportunities.maal_laao_at + INTERVAL '330 minutes')
+    ORDER BY sale_month DESC;
+
+# ============================================================================
+# METADATA
+# ============================================================================
+
+metadata:
+  version: "1.0.0"
+  created: "2026-02-09"
+  last_updated: "2026-02-09"
+  
+  related_documents:
+    - "lead_query_template.yml"
+    - "prospect_query_template.yml"
+    - "account_query_template.yml"
+    - "foreign-keys-catalog.json"
+    - "sales_funnel_rules_v2.yml"
+    - "database-catalog.json"
+    
+  related_queries:
+    previous_stage: "account_query_template.yml"
+    next_stage: "None - this is the final stage"
+    
+  database_info:
+    name: "lohono_api_production"
+    schema: "public"
+    
+  key_tables_for_sales:
+    - "development_opportunities"
+    - "tasks"
+    - "activities"
+    - "agents"
+    - "staffs"
+    - "medium"
+    
+  business_terms:
+    maal_laao:
+      language: "Hindi"
+      literal_meaning: "Bring the goods/money"
+      business_meaning: "Closed/Won Deal"
+      cultural_note: "Common business slang in India"
+    
+  notes:
+    - "Sale is the final stage in the funnel - represents revenue"
+    - "Uses task rating system unique to this stage"
+    - "Has two equally valid approaches (tasks vs maal_laao_at)"
+    - "Critical for revenue reporting and commission calculations"
+    - "Most important metric for business success"

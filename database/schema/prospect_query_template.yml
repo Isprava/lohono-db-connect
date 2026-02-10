@@ -1,0 +1,678 @@
+# ============================================================================
+# PROSPECT QUERY TEMPLATE - PARAMETERIZED
+# ============================================================================
+# Purpose: Define the canonical query for calculating prospects with parameters
+# Version: 1.0
+# Created: 2026-02-09
+# ============================================================================
+
+query_template:
+  name: "calculate_prospects"
+  description: "Calculate total prospects from opportunities that moved to prospect stage"
+  stage: "Prospect"
+  
+  # Parameters that can be injected
+  parameters:
+    start_date:
+      type: "date"
+      format: "YYYY-MM-DD"
+      description: "Start date for the reporting period"
+      example: "2026-01-01"
+      required: true
+      
+    end_date:
+      type: "date"
+      format: "YYYY-MM-DD"
+      description: "End date for the reporting period"
+      example: "2026-01-31"
+      required: true
+      
+    timezone_offset:
+      type: "interval"
+      description: "Timezone conversion for IST"
+      default: "330 minutes"
+      alternative: "5 hours 30 minutes"
+      note: "Use one format consistently throughout the query"
+      
+    slug_exclusions:
+      type: "array"
+      description: "Banned opportunity slugs to exclude"
+      default: ['569657C6', '5EB1A14A', '075E54DF']
+      optional: true
+      
+    vertical:
+      type: "string"
+      description: "Business vertical filter"
+      default: "development"
+      optional: false
+
+  # SQL template with placeholders
+  sql_template: |
+    SELECT COUNT(DISTINCT slug) AS prospects
+    FROM
+    (
+        SELECT 
+            development_opportunities.slug,
+            stage_histories.updated_at + INTERVAL '{{timezone_offset}}' AS moved_to_prospect,
+            RANK() OVER (
+                PARTITION BY stage_histories.leadable_id, stage_histories.leadable_type
+                ORDER BY stage_histories.updated_at ASC
+            ) AS date_rank
+        FROM development_opportunities
+        INNER JOIN stage_histories 
+            ON development_opportunities.id = stage_histories.leadable_id
+           AND stage_histories.leadable_type = 'Development::Opportunity'
+        INNER JOIN stages 
+            ON stage_histories.stage_id = stages.id
+        WHERE development_opportunities.vertical = '{{vertical}}'
+          AND stages.vertical = '{{vertical}}'
+          AND stages.code = 'prospect'
+          {{#if slug_exclusions}}
+          AND development_opportunities.slug NOT IN ({{slug_exclusions}})
+          {{/if}}
+    ) sub_query
+    WHERE date_rank = 1
+      AND DATE(moved_to_prospect)
+          BETWEEN '{{start_date}}' AND '{{end_date}}';
+
+  # Alternative query using lead_completed_at timestamp
+  alternative_sql_template: |
+    SELECT COUNT(DISTINCT(slug)) AS prospects
+    FROM development_opportunities
+    WHERE lead_completed_at IS NOT NULL
+      AND DATE(lead_completed_at + INTERVAL '{{timezone_offset}}') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}'
+      {{#if slug_exclusions}}
+      AND slug NOT IN ({{slug_exclusions}})
+      {{/if}}
+      AND status != 'trash'
+      AND vertical = '{{vertical}}';
+
+  # Example usage
+  example_queries:
+    
+    january_2026_stage_history: |
+      -- January 2026 prospects (using stage_histories)
+      SELECT COUNT(DISTINCT slug) AS prospects
+      FROM
+      (
+          SELECT 
+              development_opportunities.slug,
+              stage_histories.updated_at + INTERVAL '330 minutes' AS moved_to_prospect,
+              RANK() OVER (
+                  PARTITION BY stage_histories.leadable_id, stage_histories.leadable_type
+                  ORDER BY stage_histories.updated_at ASC
+              ) AS date_rank
+          FROM development_opportunities
+          INNER JOIN stage_histories 
+              ON development_opportunities.id = stage_histories.leadable_id
+             AND stage_histories.leadable_type = 'Development::Opportunity'
+          INNER JOIN stages 
+              ON stage_histories.stage_id = stages.id
+          WHERE development_opportunities.vertical = 'development'
+            AND stages.vertical = 'development'
+            AND stages.code = 'prospect'
+            AND development_opportunities.slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+      ) sub_query
+      WHERE date_rank = 1
+        AND DATE(moved_to_prospect)
+            BETWEEN '2026-01-01' AND '2026-01-31';
+    
+    january_2026_simple: |
+      -- January 2026 prospects (using lead_completed_at)
+      SELECT COUNT(DISTINCT(slug)) AS prospects
+      FROM development_opportunities
+      WHERE lead_completed_at IS NOT NULL
+        AND DATE(lead_completed_at + INTERVAL '330 minutes') 
+            BETWEEN '2026-01-01' AND '2026-01-31'
+        AND slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+        AND status != 'trash'
+        AND vertical = 'development';
+    
+    mtd_current_month: |
+      -- Month-to-date (current month) prospects
+      SELECT COUNT(DISTINCT slug) AS prospects
+      FROM
+      (
+          SELECT 
+              development_opportunities.slug,
+              stage_histories.updated_at + INTERVAL '330 minutes' AS moved_to_prospect,
+              RANK() OVER (
+                  PARTITION BY stage_histories.leadable_id, stage_histories.leadable_type
+                  ORDER BY stage_histories.updated_at ASC
+              ) AS date_rank
+          FROM development_opportunities
+          INNER JOIN stage_histories 
+              ON development_opportunities.id = stage_histories.leadable_id
+             AND stage_histories.leadable_type = 'Development::Opportunity'
+          INNER JOIN stages 
+              ON stage_histories.stage_id = stages.id
+          WHERE development_opportunities.vertical = 'development'
+            AND stages.vertical = 'development'
+            AND stages.code = 'prospect'
+            AND development_opportunities.slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+      ) sub_query
+      WHERE date_rank = 1
+        AND DATE(moved_to_prospect) >= DATE_TRUNC('month', CURRENT_DATE)
+        AND DATE(moved_to_prospect) < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+        AND DATE_PART('day', moved_to_prospect) <= DATE_PART('day', NOW() + INTERVAL '330 minutes');
+
+  # Query breakdown explanation
+  query_breakdown:
+    
+    step_1_join_stage_histories:
+      description: "Join opportunities with stage_histories to find when they moved to prospect"
+      tables_involved:
+        - "development_opportunities"
+        - "stage_histories"
+        - "stages"
+      join_type: "INNER JOIN"
+      join_conditions:
+        - "development_opportunities.id = stage_histories.leadable_id"
+        - "stage_histories.leadable_type = 'Development::Opportunity'"
+        - "stage_histories.stage_id = stages.id"
+      filters:
+        - "development_opportunities.vertical = 'development'"
+        - "stages.vertical = 'development'"
+        - "stages.code = 'prospect'"
+        - "slug NOT IN (banned slugs)"
+        
+    step_2_rank_by_date:
+      description: "Rank stage changes to get the FIRST time opportunity moved to prospect"
+      window_function: "RANK() OVER (PARTITION BY leadable_id, leadable_type ORDER BY updated_at ASC)"
+      reason: "An opportunity might move to prospect multiple times (e.g., if moved back to lead and then to prospect again)"
+      select_rank: 1
+      note: "We only want the first time it moved to prospect"
+      
+    step_3_filter_date_range:
+      description: "Filter by date range on when they moved to prospect"
+      timestamp_column: "moved_to_prospect"
+      filter: "DATE(moved_to_prospect) BETWEEN start_date AND end_date"
+      
+    step_4_count_distinct:
+      description: "Count distinct slugs to get total prospects"
+      count_method: "COUNT(DISTINCT slug)"
+      reason: "Ensure no duplicates"
+
+  # Alternative approach explanation
+  alternative_approach:
+    name: "Using lead_completed_at timestamp"
+    description: "Simpler query using the denormalized timestamp column"
+    
+    pros:
+      - "Simpler query - no joins needed"
+      - "Faster execution - no window functions"
+      - "Direct timestamp available on opportunities table"
+      
+    cons:
+      - "Less accurate if stage history was modified"
+      - "Doesn't account for opportunities that moved back and forth"
+      
+    when_to_use:
+      - "Performance is critical"
+      - "Stage history data is reliable"
+      - "Don't need to track stage movements"
+      
+    timestamp_column: "lead_completed_at"
+    meaning: "When the opportunity completed the lead stage and moved to prospect"
+
+# ============================================================================
+# SCHEMA RELATIONSHIPS - PROSPECTS
+# ============================================================================
+
+schema_relationships:
+  description: "Foreign key relationships used in prospect queries"
+  
+  primary_join_chain:
+    description: "Main join path for prospect calculation"
+    
+    join_sequence:
+      
+      1_opportunities_to_stage_histories:
+        from_table: "development_opportunities"
+        to_table: "stage_histories"
+        join_type: "INNER JOIN"
+        join_conditions:
+          - column: "stage_histories.leadable_id"
+            references: "development_opportunities.id"
+            note: "Polymorphic relationship"
+          - column: "stage_histories.leadable_type"
+            value: "'Development::Opportunity'"
+            note: "Polymorphic type discriminator"
+        relationship: "1:N (one opportunity has many stage history entries)"
+        purpose: "Get all stage changes for each opportunity"
+        
+      2_stage_histories_to_stages:
+        from_table: "stage_histories"
+        to_table: "stages"
+        join_type: "INNER JOIN"
+        join_condition:
+          column: "stage_histories.stage_id"
+          references: "stages.id"
+        relationship: "N:1 (many stage history entries point to one stage definition)"
+        purpose: "Get stage details (code, name) to filter for 'prospect'"
+        
+  tables_involved:
+    
+    development_opportunities:
+      role: "Base table - opportunities being tracked"
+      columns_used:
+        - name: "id"
+          purpose: "Join key to stage_histories"
+        - name: "slug"
+          purpose: "Unique identifier for counting"
+        - name: "vertical"
+          purpose: "Filter for 'development' opportunities"
+        - name: "lead_completed_at"
+          purpose: "Alternative timestamp (denormalized from stage_histories)"
+        - name: "status"
+          purpose: "Exclude trash records"
+      filters_applied:
+        - "vertical = 'development'"
+        - "slug NOT IN (banned slugs)"
+        - "status != 'trash' (in alternative query)"
+        
+    stage_histories:
+      role: "History table - tracks all stage changes"
+      columns_used:
+        - name: "id"
+          purpose: "Primary key"
+        - name: "leadable_id"
+          purpose: "Foreign key to opportunity (polymorphic)"
+        - name: "leadable_type"
+          purpose: "Polymorphic type discriminator"
+        - name: "stage_id"
+          purpose: "Foreign key to stages"
+        - name: "updated_at"
+          purpose: "Timestamp when stage change occurred"
+      polymorphic_relationship:
+        type_column: "leadable_type"
+        id_column: "leadable_id"
+        points_to: "development_opportunities (or other leadable entities)"
+      window_function_applied:
+        function: "RANK()"
+        partition_by: "leadable_id, leadable_type"
+        order_by: "updated_at ASC"
+        purpose: "Get first time opportunity moved to prospect stage"
+        
+    stages:
+      role: "Lookup table - stage definitions"
+      columns_used:
+        - name: "id"
+          purpose: "Primary key, referenced by stage_histories"
+        - name: "code"
+          purpose: "Stage identifier (lead, prospect, account, etc.)"
+        - name: "vertical"
+          purpose: "Business vertical (development, property)"
+        - name: "name"
+          purpose: "Display name"
+      filters_applied:
+        - "code = 'prospect'"
+        - "vertical = 'development'"
+      common_codes:
+        - "lead"
+        - "prospect"
+        - "account"
+        - "sale" # Note: may not exist in stages table, uses maal_laao_at instead
+
+# ============================================================================
+# COMMON JOIN PATTERNS FOR PROSPECTS
+# ============================================================================
+
+common_join_patterns:
+  description: "Frequently used join patterns for prospect analysis"
+  
+  # Get prospects with agent information
+  prospects_with_agents: |
+    SELECT 
+        sub_query.slug,
+        sub_query.moved_to_prospect,
+        agents.name AS agent_name,
+        agents.company_name
+    FROM
+    (
+        SELECT 
+            development_opportunities.slug,
+            development_opportunities.id,
+            stage_histories.updated_at + INTERVAL '330 minutes' AS moved_to_prospect,
+            RANK() OVER (
+                PARTITION BY stage_histories.leadable_id, stage_histories.leadable_type
+                ORDER BY stage_histories.updated_at ASC
+            ) AS date_rank
+        FROM development_opportunities
+        INNER JOIN stage_histories 
+            ON development_opportunities.id = stage_histories.leadable_id
+           AND stage_histories.leadable_type = 'Development::Opportunity'
+        INNER JOIN stages 
+            ON stage_histories.stage_id = stages.id
+        WHERE development_opportunities.vertical = 'development'
+          AND stages.code = 'prospect'
+    ) sub_query
+    INNER JOIN development_opportunities ON development_opportunities.slug = sub_query.slug
+    LEFT JOIN agents ON agents.id = development_opportunities.agent_id
+    WHERE sub_query.date_rank = 1
+      AND DATE(sub_query.moved_to_prospect) BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get prospects with POC staff
+  prospects_with_poc: |
+    SELECT 
+        sub_query.slug,
+        sub_query.moved_to_prospect,
+        poc_exec.name AS poc_exec_name,
+        poc_head.name AS poc_head_name,
+        poc_exec.source_region
+    FROM
+    (
+        SELECT 
+            development_opportunities.slug,
+            development_opportunities.id,
+            stage_histories.updated_at + INTERVAL '330 minutes' AS moved_to_prospect,
+            RANK() OVER (
+                PARTITION BY stage_histories.leadable_id, stage_histories.leadable_type
+                ORDER BY stage_histories.updated_at ASC
+            ) AS date_rank
+        FROM development_opportunities
+        INNER JOIN stage_histories 
+            ON development_opportunities.id = stage_histories.leadable_id
+           AND stage_histories.leadable_type = 'Development::Opportunity'
+        INNER JOIN stages 
+            ON stage_histories.stage_id = stages.id
+        WHERE development_opportunities.vertical = 'development'
+          AND stages.code = 'prospect'
+    ) sub_query
+    INNER JOIN development_opportunities ON development_opportunities.slug = sub_query.slug
+    LEFT JOIN staffs AS poc_exec ON poc_exec.id = development_opportunities.poc_exec_id
+    LEFT JOIN staffs AS poc_head ON poc_head.id = development_opportunities.poc_head_id
+    WHERE sub_query.date_rank = 1
+      AND DATE(sub_query.moved_to_prospect) BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get all stage history for prospects
+  prospects_stage_progression: |
+    SELECT 
+        development_opportunities.slug,
+        stages.code AS stage,
+        stages.name AS stage_name,
+        stage_histories.updated_at + INTERVAL '330 minutes' AS stage_changed_at,
+        stage_histories.action
+    FROM development_opportunities
+    INNER JOIN stage_histories 
+        ON development_opportunities.id = stage_histories.leadable_id
+       AND stage_histories.leadable_type = 'Development::Opportunity'
+    INNER JOIN stages 
+        ON stage_histories.stage_id = stages.id
+    WHERE development_opportunities.lead_completed_at IS NOT NULL
+      AND DATE(development_opportunities.lead_completed_at + INTERVAL '330 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}'
+    ORDER BY development_opportunities.slug, stage_histories.updated_at;
+
+# ============================================================================
+# QUERY OPTIMIZATION & PERFORMANCE
+# ============================================================================
+
+query_optimization:
+  
+  performance_considerations:
+    
+    window_function_cost:
+      description: "RANK() window function is computationally expensive"
+      impact: "Can be slow on large datasets"
+      mitigation:
+        - "Add indexes on stage_histories (leadable_id, leadable_type, updated_at)"
+        - "Filter early in WHERE clause"
+        - "Consider using lead_completed_at if accuracy allows"
+        
+    index_recommendations:
+      - table: "stage_histories"
+        columns: ["leadable_id", "leadable_type", "updated_at"]
+        type: "composite index"
+        reason: "Supports window function and filtering"
+        
+      - table: "stage_histories"
+        columns: ["stage_id"]
+        type: "single column index"
+        reason: "Supports join to stages table"
+        
+      - table: "development_opportunities"
+        columns: ["vertical"]
+        type: "single column index"
+        reason: "Supports filtering by vertical"
+        
+      - table: "development_opportunities"
+        columns: ["lead_completed_at"]
+        type: "single column index"
+        reason: "Supports alternative query approach"
+        
+    query_plan_analysis:
+      expected_operations:
+        - "Index Scan on stage_histories"
+        - "Hash Join with stages"
+        - "Window Aggregate (RANK)"
+        - "Filter on date_rank = 1"
+        - "Count Distinct"
+
+  query_variants:
+    
+    stage_history_approach:
+      pros:
+        - "Most accurate - tracks actual stage movements"
+        - "Handles scenarios where opportunities move back and forth"
+        - "First movement to prospect is captured"
+      cons:
+        - "More complex query"
+        - "Slower performance (window functions)"
+        - "Requires joins"
+      use_when: "Accuracy is paramount"
+      
+    lead_completed_at_approach:
+      pros:
+        - "Simple query"
+        - "Fast performance"
+        - "No joins or window functions"
+      cons:
+        - "Less accurate if stage history was edited"
+        - "Doesn't capture stage movements"
+      use_when: "Performance is critical and data is reliable"
+
+# ============================================================================
+# BUSINESS LOGIC & VALIDATION
+# ============================================================================
+
+business_logic:
+  
+  prospect_definition:
+    description: "What makes an opportunity a 'prospect'"
+    criteria:
+      - "Opportunity has moved to the 'prospect' stage at least once"
+      - "The first time it moved to prospect falls within the date range"
+      - "Opportunity is not a banned slug"
+      - "Opportunity is in the 'development' vertical"
+      
+  stage_movement_scenarios:
+    
+    scenario_1_normal:
+      description: "Normal progression: lead → prospect"
+      stage_history:
+        - "2026-01-05: moved to prospect"
+      result: "Counts as prospect in January 2026"
+      
+    scenario_2_multiple_movements:
+      description: "Moved to prospect, then back to lead, then prospect again"
+      stage_history:
+        - "2026-01-05: moved to prospect"
+        - "2026-01-10: moved back to lead"
+        - "2026-01-20: moved to prospect again"
+      result: "Counts as prospect in January 2026 (first movement on 2026-01-05)"
+      note: "RANK() = 1 ensures we only count the first movement"
+      
+    scenario_3_moved_outside_range:
+      description: "First moved to prospect outside date range"
+      stage_history:
+        - "2025-12-15: moved to prospect"
+        - "2026-01-10: moved back to lead"
+        - "2026-01-20: moved to prospect again"
+      result: "Does NOT count in January 2026 (first movement was in December)"
+      note: "Only the first movement date matters"
+      
+  exclusions:
+    
+    slug_exclusions:
+      values: ['569657C6', '5EB1A14A', '075E54DF']
+      reason: "Banned opportunity slugs per business rules"
+      applies_to: "stage_history_approach"
+      
+    no_source_exclusion:
+      note: "DnB source exclusion does NOT apply to prospects (only to leads)"
+      reason: "Once qualified as prospect, source doesn't matter"
+
+# ============================================================================
+# COMPARISON WITH LEAD QUERY
+# ============================================================================
+
+comparison_with_leads:
+  
+  similarities:
+    - "Both use timezone conversion (IST)"
+    - "Both apply slug exclusions"
+    - "Both filter by vertical = 'development'"
+    - "Both use COUNT(DISTINCT slug)"
+    
+  differences:
+    
+    leads:
+      tables: "development_opportunities + enquiries"
+      timestamp: "enquired_at (opportunities) or created_at (enquiries)"
+      joins: "None for basic count"
+      complexity: "Simple UNION ALL"
+      source_exclusion: "Yes - exclude DnB source"
+      
+    prospects:
+      tables: "development_opportunities + stage_histories + stages"
+      timestamp: "stage_histories.updated_at (when moved to prospect)"
+      joins: "Required - INNER JOIN stage_histories and stages"
+      complexity: "Window function (RANK) + subquery"
+      source_exclusion: "No - source doesn't matter at prospect stage"
+
+# ============================================================================
+# VALIDATION QUERIES
+# ============================================================================
+
+validation_queries:
+  description: "Queries to validate prospect calculations"
+  
+  # Verify prospect counts match between methods
+  compare_methods: |
+    -- Compare stage_history approach vs lead_completed_at approach
+    SELECT 
+        'Stage History' AS method,
+        COUNT(DISTINCT slug) AS prospect_count
+    FROM (
+        SELECT 
+            development_opportunities.slug,
+            stage_histories.updated_at + INTERVAL '330 minutes' AS moved_to_prospect,
+            RANK() OVER (
+                PARTITION BY stage_histories.leadable_id, stage_histories.leadable_type
+                ORDER BY stage_histories.updated_at ASC
+            ) AS date_rank
+        FROM development_opportunities
+        INNER JOIN stage_histories 
+            ON development_opportunities.id = stage_histories.leadable_id
+           AND stage_histories.leadable_type = 'Development::Opportunity'
+        INNER JOIN stages 
+            ON stage_histories.stage_id = stages.id
+        WHERE development_opportunities.vertical = 'development'
+          AND stages.code = 'prospect'
+    ) sub_query
+    WHERE date_rank = 1
+      AND DATE(moved_to_prospect) BETWEEN '2026-01-01' AND '2026-01-31'
+    
+    UNION ALL
+    
+    SELECT 
+        'Lead Completed At' AS method,
+        COUNT(DISTINCT slug) AS prospect_count
+    FROM development_opportunities
+    WHERE lead_completed_at IS NOT NULL
+      AND DATE(lead_completed_at + INTERVAL '330 minutes') 
+          BETWEEN '2026-01-01' AND '2026-01-31'
+      AND slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+      AND status != 'trash';
+  
+  # Find prospects with multiple stage movements
+  multiple_movements: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.name,
+        COUNT(*) AS times_moved_to_prospect,
+        MIN(stage_histories.updated_at + INTERVAL '330 minutes') AS first_moved,
+        MAX(stage_histories.updated_at + INTERVAL '330 minutes') AS last_moved
+    FROM development_opportunities
+    INNER JOIN stage_histories 
+        ON development_opportunities.id = stage_histories.leadable_id
+       AND stage_histories.leadable_type = 'Development::Opportunity'
+    INNER JOIN stages 
+        ON stage_histories.stage_id = stages.id
+    WHERE stages.code = 'prospect'
+    GROUP BY development_opportunities.slug, development_opportunities.name
+    HAVING COUNT(*) > 1
+    ORDER BY times_moved_to_prospect DESC;
+  
+  # Check for mismatches between lead_completed_at and stage_histories
+  data_integrity_check: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.lead_completed_at,
+        stage_history_date.first_prospect_date,
+        CASE 
+            WHEN development_opportunities.lead_completed_at IS NULL 
+                 AND stage_history_date.first_prospect_date IS NOT NULL 
+                 THEN 'Missing lead_completed_at'
+            WHEN development_opportunities.lead_completed_at IS NOT NULL 
+                 AND stage_history_date.first_prospect_date IS NULL 
+                 THEN 'Missing stage history'
+            WHEN DATE(development_opportunities.lead_completed_at) != DATE(stage_history_date.first_prospect_date)
+                 THEN 'Date mismatch'
+            ELSE 'OK'
+        END AS status
+    FROM development_opportunities
+    LEFT JOIN (
+        SELECT 
+            stage_histories.leadable_id,
+            MIN(stage_histories.updated_at) AS first_prospect_date
+        FROM stage_histories
+        INNER JOIN stages ON stage_histories.stage_id = stages.id
+        WHERE stages.code = 'prospect'
+          AND stage_histories.leadable_type = 'Development::Opportunity'
+        GROUP BY stage_histories.leadable_id
+    ) stage_history_date ON stage_history_date.leadable_id = development_opportunities.id
+    WHERE development_opportunities.lead_completed_at IS NOT NULL
+       OR stage_history_date.first_prospect_date IS NOT NULL;
+
+# ============================================================================
+# METADATA
+# ============================================================================
+
+metadata:
+  version: "1.0.0"
+  created: "2026-02-09"
+  last_updated: "2026-02-09"
+  
+  related_documents:
+    - "lead_query_template.yml"
+    - "foreign-keys-catalog.json"
+    - "sales_funnel_rules_v2.yml"
+    - "database-catalog.json"
+    
+  related_queries:
+    previous_stage: "lead_query_template.yml"
+    next_stage: "account_query_template.yml (to be created)"
+    
+  database_info:
+    name: "lohono_api_production"
+    schema: "public"
+    
+  key_tables_for_prospects:
+    - "development_opportunities"
+    - "stage_histories"
+    - "stages"
+    - "agents"
+    - "staffs"

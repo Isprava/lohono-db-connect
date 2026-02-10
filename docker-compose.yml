@@ -55,9 +55,10 @@ services:
       DB_NAME: ${DB_NAME:-lohono_api_production}
       REDASH_URL: ${REDASH_URL:-}
       REDASH_API_KEY: ${REDASH_API_KEY:-}
-      ACL_CONFIG_PATH: /app/config/acl.yml
+      ACL_CONFIG_PATH: /app/database/schema/acl.yml
+      DATABASE_DIR: /app/database
       MCP_USER_EMAIL: ${MCP_USER_EMAIL:-}
-      SALES_FUNNEL_RULES_PATH: /app/config/sales_funnel_rules_v2.yml
+      SALES_FUNNEL_RULES_PATH: /app/database/config/sales_funnel_rules_v2.yml
       PORT: "3000"
       # ── Observability ──
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
@@ -69,7 +70,13 @@ services:
     ports:
       - "${MCP_PORT:-3000}:3000"
     volumes:
-      - ./config:/app/config:ro
+      - ./database:/app/database:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # ── MCP Client (Claude-powered backend API) ────────────────────────────
   mcp-client:
@@ -107,6 +114,12 @@ services:
       TZ: Asia/Kolkata
     ports:
       - "${CLIENT_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # ── Chat Client (React SPA via nginx) ───────────────────────────────────
   chat-client:

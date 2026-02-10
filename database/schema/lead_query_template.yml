@@ -1,0 +1,690 @@
+# ============================================================================
+# LEAD QUERY TEMPLATE - PARAMETERIZED
+# ============================================================================
+# Purpose: Define the canonical query for calculating leads with parameters
+# Version: 1.0
+# Created: 2026-02-09
+# ============================================================================
+
+query_template:
+  name: "calculate_leads"
+  description: "Calculate total leads from opportunities and enquiries"
+  stage: "Lead"
+  
+  # Parameters that can be injected
+  parameters:
+    start_date:
+      type: "date"
+      format: "YYYY-MM-DD"
+      description: "Start date for the reporting period"
+      example: "2026-01-01"
+      required: true
+      
+    end_date:
+      type: "date"
+      format: "YYYY-MM-DD"
+      description: "End date for the reporting period"
+      example: "2026-01-31"
+      required: true
+      
+    timezone_offset:
+      type: "interval"
+      description: "Timezone conversion for IST"
+      default: "330 minutes"
+      alternative: "5 hours 30 minutes"
+      note: "Use one format consistently throughout the query"
+      
+    slug_exclusions:
+      type: "array"
+      description: "Banned opportunity slugs to exclude"
+      default: ['569657C6', '5EB1A14A', '075E54DF']
+      optional: true
+      
+    source_exclusion:
+      type: "string"
+      description: "Source to exclude from leads (DnB)"
+      default: "DnB"
+      optional: true
+
+  # SQL template with placeholders
+  sql_template: |
+    SELECT 
+        SUM(leads)::int AS leads
+    FROM
+    (
+        -- Leads from Development Opportunities
+        SELECT COUNT(DISTINCT development_opportunities.slug) AS leads
+        FROM development_opportunities
+        WHERE DATE(enquired_at + INTERVAL '{{timezone_offset}}') 
+              BETWEEN '{{start_date}}' AND '{{end_date}}'
+          {{#if slug_exclusions}}
+          AND slug NOT IN ({{slug_exclusions}})
+          {{/if}}
+          {{#if source_exclusion}}
+          AND source != '{{source_exclusion}}'
+          {{/if}}
+          AND status != 'trash'
+
+        UNION ALL
+
+        -- Leads from Enquiries table
+        SELECT COUNT(id) AS leads
+        FROM enquiries
+        WHERE enquiries.vertical = 'development'
+          AND enquiry_type = 'enquiry'
+          AND leadable_id IS NULL
+          AND is_trash != TRUE
+          AND DATE(enquiries.created_at + INTERVAL '{{timezone_offset}}') 
+              BETWEEN '{{start_date}}' AND '{{end_date}}'
+    ) leads_data;
+
+  # Example usage
+  example_queries:
+    
+    january_2026: |
+      -- January 2026 leads
+      SELECT 
+          SUM(leads)::int AS leads
+      FROM
+      (
+          SELECT COUNT(DISTINCT development_opportunities.slug) AS leads
+          FROM development_opportunities
+          WHERE DATE(enquired_at + INTERVAL '330 minutes') 
+                BETWEEN '2026-01-01' AND '2026-01-31'
+            AND slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+            AND source != 'DnB'
+            AND status != 'trash'
+
+          UNION ALL
+
+          SELECT COUNT(id) AS leads
+          FROM enquiries
+          WHERE enquiries.vertical = 'development'
+            AND enquiry_type = 'enquiry'
+            AND leadable_id IS NULL
+            AND is_trash != TRUE
+            AND DATE(enquiries.created_at + INTERVAL '5 hours 30 minutes') 
+                BETWEEN '2026-01-01' AND '2026-01-31'
+      ) leads_data;
+    
+    mtd_current_month: |
+      -- Month-to-date (current month)
+      SELECT 
+          SUM(leads)::int AS leads
+      FROM
+      (
+          SELECT COUNT(DISTINCT development_opportunities.slug) AS leads
+          FROM development_opportunities
+          WHERE DATE(enquired_at + INTERVAL '330 minutes') >= DATE_TRUNC('month', CURRENT_DATE)
+            AND DATE(enquired_at + INTERVAL '330 minutes') < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+            AND DATE_PART('day', enquired_at + INTERVAL '330 minutes') <= DATE_PART('day', NOW() + INTERVAL '330 minutes')
+            AND slug NOT IN ('569657C6', '5EB1A14A', '075E54DF')
+            AND source != 'DnB'
+            AND status != 'trash'
+
+          UNION ALL
+
+          SELECT COUNT(id) AS leads
+          FROM enquiries
+          WHERE enquiries.vertical = 'development'
+            AND enquiry_type = 'enquiry'
+            AND leadable_id IS NULL
+            AND is_trash != TRUE
+            AND DATE(enquiries.created_at + INTERVAL '5 hours 30 minutes') >= DATE_TRUNC('month', CURRENT_DATE)
+            AND DATE(enquiries.created_at + INTERVAL '5 hours 30 minutes') < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+            AND DATE_PART('day', enquiries.created_at + INTERVAL '5 hours 30 minutes') <= DATE_PART('day', NOW() + INTERVAL '5 hours 30 minutes')
+      ) leads_data;
+
+  # Query breakdown explanation
+  query_breakdown:
+    
+    part_1_opportunities:
+      description: "Leads from development_opportunities table"
+      table: "development_opportunities"
+      timestamp_column: "enquired_at"
+      count_method: "COUNT(DISTINCT slug)"
+      filters:
+        - "Date range on enquired_at (with IST conversion)"
+        - "Exclude banned slugs"
+        - "Exclude DnB source"
+        - "Exclude trash status"
+        
+    part_2_enquiries:
+      description: "Leads from standalone enquiries"
+      table: "enquiries"
+      timestamp_column: "created_at"
+      count_method: "COUNT(id)"
+      filters:
+        - "vertical = 'development'"
+        - "enquiry_type = 'enquiry'"
+        - "leadable_id IS NULL (not linked to opportunity)"
+        - "is_trash != TRUE"
+        - "Date range on created_at (with IST conversion)"
+        
+    union_all:
+      description: "Combine both sources"
+      reason: "UNION ALL preserves all rows (no deduplication between sources)"
+      
+    final_sum:
+      description: "Sum both counts to get total leads"
+      cast: "::int to ensure integer result"
+
+# ============================================================================
+# SCHEMA INTELLIGENCE - FOREIGN KEY RELATIONSHIPS
+# ============================================================================
+
+schema_relationships:
+  description: "Foreign key relationships relevant to lead tracking"
+  
+  # Primary tables
+  tables:
+    
+    development_opportunities:
+      description: "Main sales opportunities table"
+      primary_key: "id"
+      unique_identifier: "slug"
+      
+      foreign_keys:
+        
+        agent_id:
+          references_table: "agents"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Agent who brought this opportunity"
+          nullable: true
+          
+        poc_exec_id:
+          references_table: "staffs"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Point of contact executive assigned"
+          nullable: true
+          alias_in_joins: "poc_exec"
+          
+        poc_head_id:
+          references_table: "staffs"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Point of contact head/manager"
+          nullable: true
+          alias_in_joins: "poc_head"
+          
+        current_stage_id:
+          references_table: "stages"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Current stage in the funnel"
+          nullable: true
+          note: "Use current_stage varchar field instead for simplicity"
+          
+      inverse_relationships:
+        
+        activities:
+          foreign_table: "activities"
+          foreign_key: "leadable_id"
+          polymorphic_type: "leadable_type = 'Development::Opportunity'"
+          relationship: "one_to_many"
+          description: "All activities logged for this opportunity"
+          
+        stage_histories:
+          foreign_table: "stage_histories"
+          foreign_key: "leadable_id"
+          polymorphic_type: "leadable_type = 'Development::Opportunity'"
+          relationship: "one_to_many"
+          description: "Stage progression history"
+          
+        enquiries_linked:
+          foreign_table: "enquiries"
+          foreign_key: "leadable_id"
+          polymorphic_type: "leadable_type = 'Development::Opportunity'"
+          relationship: "one_to_many"
+          description: "Enquiries that were converted to this opportunity"
+          
+    enquiries:
+      description: "Customer enquiries (can be standalone or linked to opportunities)"
+      primary_key: "id"
+      
+      foreign_keys:
+        
+        leadable_id:
+          references_table: "development_opportunities (or other leadables)"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Links enquiry to opportunity when converted"
+          nullable: true
+          polymorphic: true
+          type_column: "leadable_type"
+          when_null: "Enquiry is standalone (counts as lead)"
+          when_not_null: "Enquiry has been converted (doesn't count as separate lead)"
+          
+        agent_id:
+          references_table: "agents"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Agent associated with this enquiry"
+          nullable: true
+          
+        contact_id:
+          references_table: "contacts"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Contact person for this enquiry"
+          nullable: true
+          
+    agents:
+      description: "Agents who bring business"
+      primary_key: "id"
+      unique_identifier: "slug"
+      
+      foreign_keys:
+        
+        poc_exec_id:
+          references_table: "staffs"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "POC executive for this agent"
+          nullable: true
+          
+        poc_head_id:
+          references_table: "staffs"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "POC head for this agent"
+          nullable: true
+          
+      inverse_relationships:
+        
+        opportunities:
+          foreign_table: "development_opportunities"
+          foreign_key: "agent_id"
+          relationship: "one_to_many"
+          description: "Opportunities brought by this agent"
+          
+        enquiries:
+          foreign_table: "enquiries"
+          foreign_key: "agent_id"
+          relationship: "one_to_many"
+          description: "Enquiries from this agent"
+          
+    staffs:
+      description: "Staff members (executives, managers)"
+      primary_key: "id"
+      unique_identifier: "handle"
+      
+      inverse_relationships:
+        
+        opportunities_as_exec:
+          foreign_table: "development_opportunities"
+          foreign_key: "poc_exec_id"
+          relationship: "one_to_many"
+          description: "Opportunities where staff is POC executive"
+          
+        opportunities_as_head:
+          foreign_table: "development_opportunities"
+          foreign_key: "poc_head_id"
+          relationship: "one_to_many"
+          description: "Opportunities where staff is POC head"
+          
+        agents_as_exec:
+          foreign_table: "agents"
+          foreign_key: "poc_exec_id"
+          relationship: "one_to_many"
+          
+        agents_as_head:
+          foreign_table: "agents"
+          foreign_key: "poc_head_id"
+          relationship: "one_to_many"
+          
+    activities:
+      description: "Activity feed - polymorphic join table"
+      primary_key: "id"
+      
+      foreign_keys:
+        
+        leadable_id:
+          references_table: "polymorphic (opportunities, etc.)"
+          references_column: "id"
+          relationship: "many_to_one"
+          polymorphic: true
+          type_column: "leadable_type"
+          description: "The lead/opportunity this activity belongs to"
+          
+        feedable_id:
+          references_table: "polymorphic (tasks, notes, etc.)"
+          references_column: "id"
+          relationship: "many_to_one"
+          polymorphic: true
+          type_column: "feedable_type"
+          description: "The actual activity (task, note, etc.)"
+          
+    tasks:
+      description: "Tasks/activities performed on opportunities"
+      primary_key: "id"
+      
+      foreign_keys:
+        
+        medium_id:
+          references_table: "medium"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "Medium of communication (Meeting, Call, Email, etc.)"
+          
+      inverse_relationships:
+        
+        activities:
+          foreign_table: "activities"
+          foreign_key: "feedable_id"
+          polymorphic_type: "feedable_type = 'Task'"
+          relationship: "one_to_many"
+          description: "Links tasks to opportunities via activities"
+          
+    medium:
+      description: "Communication medium lookup table"
+      primary_key: "id"
+      values_examples: ["Meeting", "Call", "Email", "Viewing", "Site Visit"]
+      
+      inverse_relationships:
+        
+        tasks:
+          foreign_table: "tasks"
+          foreign_key: "medium_id"
+          relationship: "one_to_many"
+          
+    stages:
+      description: "Funnel stage definitions"
+      primary_key: "id"
+      
+      key_columns:
+        code: "Stage code (lead, prospect, account, etc.)"
+        vertical: "Business vertical (development, property, etc.)"
+        name: "Display name"
+        
+      inverse_relationships:
+        
+        opportunities:
+          foreign_table: "development_opportunities"
+          foreign_key: "current_stage_id"
+          relationship: "one_to_many"
+          
+        stage_histories:
+          foreign_table: "stage_histories"
+          foreign_key: "stage_id"
+          relationship: "one_to_many"
+          
+    stage_histories:
+      description: "History of stage changes"
+      primary_key: "id"
+      
+      foreign_keys:
+        
+        leadable_id:
+          references_table: "polymorphic (opportunities, etc.)"
+          references_column: "id"
+          polymorphic: true
+          type_column: "leadable_type"
+          relationship: "many_to_one"
+          description: "The opportunity that changed stages"
+          
+        stage_id:
+          references_table: "stages"
+          references_column: "id"
+          relationship: "many_to_one"
+          description: "The stage that was entered"
+
+# ============================================================================
+# COMMON JOIN PATTERNS
+# ============================================================================
+
+common_join_patterns:
+  description: "Frequently used join patterns for lead analysis"
+  
+  # Get leads with agent information
+  leads_with_agents: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.enquired_at,
+        agents.name AS agent_name,
+        agents.company_name
+    FROM development_opportunities
+    LEFT JOIN agents ON agents.id = development_opportunities.agent_id
+    WHERE development_opportunities.enquired_at IS NOT NULL
+      AND DATE(development_opportunities.enquired_at + INTERVAL '330 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get leads with POC executive/head
+  leads_with_poc: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.enquired_at,
+        poc_exec.name AS poc_exec_name,
+        poc_head.name AS poc_head_name,
+        poc_exec.source_region
+    FROM development_opportunities
+    LEFT JOIN staffs AS poc_exec ON poc_exec.id = development_opportunities.poc_exec_id
+    LEFT JOIN staffs AS poc_head ON poc_head.id = development_opportunities.poc_head_id
+    WHERE development_opportunities.enquired_at IS NOT NULL
+      AND DATE(development_opportunities.enquired_at + INTERVAL '330 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get activities/tasks for leads
+  leads_with_activities: |
+    SELECT 
+        development_opportunities.slug,
+        development_opportunities.enquired_at,
+        tasks.performed_at,
+        medium.name AS activity_type,
+        tasks.rating
+    FROM development_opportunities
+    INNER JOIN activities ON activities.leadable_id = development_opportunities.id
+        AND activities.leadable_type = 'Development::Opportunity'
+    INNER JOIN tasks ON tasks.id = activities.feedable_id
+        AND activities.feedable_type = 'Task'
+    LEFT JOIN medium ON medium.id = tasks.medium_id
+    WHERE development_opportunities.enquired_at IS NOT NULL
+      AND DATE(development_opportunities.enquired_at + INTERVAL '330 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}';
+  
+  # Get enquiries with conversion status
+  enquiries_with_conversion: |
+    SELECT 
+        enquiries.id,
+        enquiries.created_at,
+        enquiries.name,
+        enquiries.mobile,
+        enquiries.leadable_id,
+        CASE 
+            WHEN enquiries.leadable_id IS NULL THEN 'Standalone Lead'
+            ELSE 'Converted to Opportunity'
+        END AS conversion_status,
+        development_opportunities.slug AS converted_to_slug
+    FROM enquiries
+    LEFT JOIN development_opportunities ON development_opportunities.id = enquiries.leadable_id
+        AND enquiries.leadable_type = 'Development::Opportunity'
+    WHERE enquiries.vertical = 'development'
+      AND enquiries.enquiry_type = 'enquiry'
+      AND DATE(enquiries.created_at + INTERVAL '5 hours 30 minutes') 
+          BETWEEN '{{start_date}}' AND '{{end_date}}';
+
+# ============================================================================
+# RELATIONSHIP VISUALIZATION
+# ============================================================================
+
+relationship_diagram:
+  description: "Visual representation of table relationships"
+  
+  ascii_diagram: |
+    
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                    LEAD TRACKING RELATIONSHIPS                   │
+    └─────────────────────────────────────────────────────────────────┘
+    
+    ┌──────────────────┐
+    │     agents       │
+    │  PK: id          │
+    │  UK: slug        │
+    │  - name          │
+    │  - company_name  │
+    │  FK: poc_exec_id ├──────┐
+    │  FK: poc_head_id ├────┐ │
+    └────────┬─────────┘    │ │
+             │              │ │
+             │ 1:N          │ │
+             │              │ │
+    ┌────────▼──────────────────────────────────┐
+    │    development_opportunities              │
+    │    PK: id                                 │
+    │    UK: slug                               │
+    │    - current_stage                        │
+    │    - status                               │
+    │    - enquired_at           ← LEAD         │
+    │    - lead_completed_at     ← PROSPECT     │
+    │    - prospect_completed_at ← ACCOUNT      │
+    │    - maal_laao_at          ← SALE         │
+    │    FK: agent_id                           │
+    │    FK: poc_exec_id                        │
+    │    FK: poc_head_id                        │
+    └──────────┬────────────────────────────────┘
+               │
+               │ 1:N
+               │
+    ┌──────────▼─────────────┐     ┌───────────────┐
+    │      activities        │ N:1 │     tasks     │
+    │  PK: id                │◄────┤  PK: id       │
+    │  FK: leadable_id   ────┼─┐   │  - rating     │
+    │      (polymorphic)     │ │   │  - performed  │
+    │  FK: feedable_id   ────┼─┘   │  FK: medium_id│
+    │      (polymorphic)     │     └───────┬───────┘
+    └────────────────────────┘             │
+                                           │ N:1
+                                           │
+                                    ┌──────▼──────┐
+                                    │   medium    │
+                                    │  PK: id     │
+                                    │  - name     │
+                                    └─────────────┘
+    
+    ┌────────────────────┐     ┌────────────────────────┐
+    │    enquiries       │ N:1 │ development_opps       │
+    │  PK: id            │─────►  (via leadable_id)     │
+    │  - created_at      │     └────────────────────────┘
+    │  - vertical        │
+    │  - enquiry_type    │     When leadable_id IS NULL:
+    │  FK: leadable_id   │       → Standalone LEAD
+    │      (polymorphic) │     
+    │  FK: agent_id      │     When leadable_id NOT NULL:
+    └──────┬─────────────┘       → Converted to Opportunity
+           │
+           │ N:1
+           │
+    ┌──────▼──────┐
+    │   agents    │
+    └─────────────┘
+    
+    ┌────────────────────┐
+    │   stage_histories  │
+    │  PK: id            │
+    │  FK: leadable_id   ├─────► development_opportunities
+    │      (polymorphic) │
+    │  FK: stage_id      ├─────► stages
+    │  - updated_at      │
+    │  - action          │
+    └────────────────────┘
+    
+    ┌────────────┐
+    │   staffs   │◄───── Referenced by:
+    │  PK: id    │         - agents.poc_exec_id
+    │  UK: handle│         - agents.poc_head_id
+    │  - name    │         - development_opportunities.poc_exec_id
+    │  - email   │         - development_opportunities.poc_head_id
+    └────────────┘
+    
+    ┌────────────┐
+    │   stages   │◄───── Referenced by:
+    │  PK: id    │         - stage_histories.stage_id
+    │  - code    │         - development_opportunities.current_stage_id
+    │  - vertical│
+    │  - name    │
+    └────────────┘
+
+# ============================================================================
+# POLYMORPHIC RELATIONSHIPS EXPLAINED
+# ============================================================================
+
+polymorphic_relationships:
+  description: "Understanding polymorphic associations in the schema"
+  
+  leadable:
+    type_column: "leadable_type"
+    id_column: "leadable_id"
+    description: "Points to any 'leadable' entity (usually Development::Opportunity)"
+    
+    used_in_tables:
+      - "enquiries"
+      - "activities"
+      - "stage_histories"
+      
+    example_values:
+      leadable_type: "'Development::Opportunity'"
+      leadable_id: "123 (points to development_opportunities.id)"
+      
+    join_pattern: |
+      -- Polymorphic join
+      FROM table_a
+      INNER JOIN table_b 
+        ON table_b.leadable_id = table_a.id
+        AND table_b.leadable_type = 'Development::Opportunity'
+  
+  feedable:
+    type_column: "feedable_type"
+    id_column: "feedable_id"
+    description: "Points to any 'feedable' entity (tasks, notes, documents, etc.)"
+    
+    used_in_tables:
+      - "activities"
+      
+    example_values:
+      feedable_type: "'Task'"
+      feedable_id: "456 (points to tasks.id)"
+      
+    common_types:
+      - "Task"
+      - "Note"
+      - "Document"
+      - "Email"
+      
+    join_pattern: |
+      -- Polymorphic join
+      FROM activities
+      INNER JOIN tasks 
+        ON tasks.id = activities.feedable_id
+        AND activities.feedable_type = 'Task'
+
+# ============================================================================
+# METADATA & VERSIONING
+# ============================================================================
+
+metadata:
+  version: "1.0.0"
+  created: "2026-02-09"
+  last_updated: "2026-02-09"
+  
+  related_documents:
+    - "sales_funnel_rules_v2.yml"
+    - "funnel_stage_identification_rules.yml"
+    - "database-catalog.json"
+    
+  database_info:
+    name: "lohono_api_production"
+    schema: "public"
+    total_tables: 298
+    
+  key_tables_for_leads:
+    - "development_opportunities"
+    - "enquiries"
+    - "agents"
+    - "staffs"
+    - "activities"
+    - "tasks"
+    - "medium"
+    - "stages"
+    - "stage_histories"
