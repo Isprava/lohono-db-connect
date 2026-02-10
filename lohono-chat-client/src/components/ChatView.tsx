@@ -144,7 +144,7 @@ function ChatInput({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-secondary/10 p-2 sm:p-4 bg-white/80 backdrop-blur-sm">
+    <form onSubmit={handleSubmit} className="sticky bottom-0 border-t border-secondary/10 p-2 sm:p-4 bg-white/80 backdrop-blur-sm">
       <div className="max-w-3xl mx-auto flex items-end gap-2 sm:gap-3 bg-surface rounded-2xl px-3 sm:px-5 py-2.5 sm:py-3.5 border border-secondary/20 focus-within:border-accent/50 focus-within:shadow-lg focus-within:shadow-accent/10 transition-all">
         <textarea
           ref={textareaRef}
