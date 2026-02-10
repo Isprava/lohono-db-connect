@@ -38,22 +38,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
       setLoading(false);
-      // Verify session is still valid in background
+      // Refresh user profile in background; never clear the local
+      // session here — individual API calls will handle 401 errors
+      // when the user actually interacts.
       authApi
         .me()
         .then((u) => {
           setUser(u);
           localStorage.setItem("user", JSON.stringify(u));
         })
-        .catch((err) => {
-          // Only clear session if it's actually invalid (401)
-          if (err.message === "Unauthorized") {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            setToken(null);
-            setUser(null);
-          }
-          // Otherwise, keep the cached session (network error, server down, etc.)
+        .catch(() => {
+          // Keep cached session regardless of error type.
+          // If the token is truly expired, the next user-initiated
+          // API call will surface a 401 and prompt re-login.
         });
     } else {
       setLoading(false);

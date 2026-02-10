@@ -6,7 +6,8 @@ function getToken(): string | null {
 
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  { skipAuthRedirect = false } = {}
 ): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -24,6 +25,11 @@ async function request<T>(
   });
 
   if (res.status === 401) {
+    if (!skipAuthRedirect) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/auth/callback";
+    }
     throw new Error("Unauthorized");
   }
 
@@ -54,7 +60,7 @@ export const auth = {
       method: "POST",
       body: JSON.stringify({ userProfile }),
     }),
-  me: () => request<UserPublic>("/auth/me"),
+  me: () => request<UserPublic>("/auth/me", {}, { skipAuthRedirect: true }),
   logout: () =>
     request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };
