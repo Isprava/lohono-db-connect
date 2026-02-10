@@ -503,3 +503,76 @@ Run `make help` to see all available commands:
   clean-all            Stop everything and remove all volumes
   prune                Remove dangling Docker resources
 ```
+
+## Scaffold Prompt
+
+Use the following prompt with an AI coding assistant to recreate this project's core client-server infrastructure from scratch:
+
+---
+
+**Build a full-stack chat application with the following architecture:**
+
+**Tech Stack:**
+- **Client:** React + TypeScript + Vite + Tailwind CSS
+- **Server:** Node.js + Express + TypeScript
+- **Database:** MongoDB (via Mongoose) for storing users, sessions, and messages
+- **Caching:** MongoDB TTL collections for session caching (or Redis-like pattern using MongoDB)
+- **Auth:** Google OAuth with JWT tokens stored in localStorage
+- **Observability:** OpenTelemetry SDK + OTel Collector + SigNoz (ClickHouse-backed) for distributed tracing, structured logging, and metrics
+
+**Project Structure:**
+```
+project/
+├── client/          # React SPA
+│   └── src/
+│       ├── api.ts              # API client with global 401 handler
+│       ├── context/AuthContext  # Auth state + token persistence
+│       ├── components/          # Sidebar, ChatView
+│       └── pages/               # AuthCallbackPage
+├── server/          # Express API
+│   └── src/
+│       ├── routes/auth.ts       # Google OAuth + JWT
+│       ├── routes/sessions.ts   # CRUD for chat sessions
+│       ├── routes/messages.ts   # Send/receive messages
+│       ├── middleware/auth.ts   # JWT verification middleware
+│       ├── models/              # Mongoose schemas
+│       ├── cache.ts             # MongoDB-based cache layer
+│       └── observability/
+│           ├── tracing.ts       # OpenTelemetry SDK bootstrap
+│           ├── logger.ts        # Structured JSON logger (Winston)
+│           ├── middleware.ts     # Express request/response logging
+│           ├── spans.ts         # Custom span helpers
+│           └── sanitize.ts      # PII masking and data sanitization
+├── docker-compose.yml                  # Application stack
+├── docker-compose.observability.yml    # SigNoz + OTel Collector stack
+├── otel-collector-config.yaml          # OTel Collector pipeline config
+├── Dockerfile
+└── package.json     # Monorepo root
+```
+
+**Requirements:**
+
+1. **Auth Flow:** User clicks login -> redirects to Google OAuth -> callback receives token -> stored in localStorage. On refresh, restore session from localStorage without redirecting to login. Add a global 401 handler in the API client that clears the session and redirects to login only on user-initiated API calls.
+
+2. **Chat Sessions:** Users can create, list, select, and delete chat sessions. Each session has a title, timestamps, and a list of messages. Sidebar shows session history.
+
+3. **API Client:** A typed `request()` wrapper around fetch that auto-attaches the Bearer token, handles JSON parsing, and has a `skipAuthRedirect` option for background calls like token verification.
+
+4. **MongoDB Models:**
+   - `User` -- userId, email, name, picture
+   - `Session` -- sessionId, userId, title, createdAt, updatedAt
+   - `Message` -- sessionId, role (user/assistant), content, createdAt
+   - `Cache` -- key, value, expiresAt (with TTL index)
+
+5. **Docker:** Multi-stage Dockerfile that builds both client and server. docker-compose with app + MongoDB services. Separate docker-compose.observability.yml for the observability stack.
+
+6. **Dev Setup:** Vite dev server proxies `/api` to the Express backend. Single `npm run dev` starts both.
+
+7. **Observability:** Instrument the server with OpenTelemetry for distributed tracing and structured logging.
+   - Bootstrap the OTel SDK at startup (`tracing.ts`) — register a `NodeTracerProvider` with an OTLP gRPC exporter pointing at the OTel Collector.
+   - Add Express middleware that creates a span per request, attaching `http.method`, `http.route`, `http.status_code`, `user.email`, and a `X-Correlation-ID` response header with the trace ID.
+   - Use Winston for structured JSON logging. Every log line must include `trace_id`, `span_id`, `timestamp_ist`, `service`, and `level` fields so logs can be correlated with traces in SigNoz.
+   - Create custom span helpers for wrapping DB queries, external API calls, and AI model calls with timing and error attributes.
+   - Add a `sanitize.ts` module that masks PII (emails, tokens) in log output.
+   - Configure an OTel Collector (`otel-collector-config.yaml`) with an OTLP gRPC receiver on port 4317, batch processor, and OTLP exporter forwarding to SigNoz.
+   - Add a `docker-compose.observability.yml` that runs ClickHouse, SigNoz Query Service, SigNoz Frontend (UI on port 3301), and the OTel Collector. The application services send telemetry to the collector via `OTEL_EXPORTER_OTLP_ENDPOINT`.
