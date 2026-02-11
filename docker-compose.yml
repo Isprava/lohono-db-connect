@@ -15,7 +15,7 @@ services:
       # Mount db/ for backup/restore (SQL dumps live here)
       - ./db:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lohono_api} -d ${DB_NAME:-lohono_api_production}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-lohono_api} -d ${DB_NAME:-lohono_api_production}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +31,7 @@ services:
     volumes:
       - mongodata:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -58,7 +58,7 @@ services:
       ACL_CONFIG_PATH: /app/database/schema/acl.yml
       DATABASE_DIR: /app/database
       MCP_USER_EMAIL: ${MCP_USER_EMAIL:-}
-      SALES_FUNNEL_RULES_PATH: /app/database/config/sales_funnel_rules_v2.yml
+      SALES_FUNNEL_RULES_PATH: /app/database/schema/sales_funnel_rules_v2.yml
       PORT: "3000"
       # ── Observability ──
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
@@ -72,7 +72,7 @@ services:
     volumes:
       - ./database:/app/database:ro
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -115,7 +115,7 @@ services:
     ports:
       - "${CLIENT_PORT:-3001}:3001"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
