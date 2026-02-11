@@ -63,7 +63,7 @@ Only `chat-client` (8080) and `mcp-client` (3001) are reachable via nginx. All o
 | Spec | Minimum | Recommended |
 |------|---------|-------------|
 | **Instance type** | `t3.medium` (2 vCPU, 4 GB) | `t3.large` (2 vCPU, 8 GB) |
-| **AMI** | Ubuntu Server 22.04 LTS x86_64 | Same |
+| **AMI** | Amazon Linux 2023 x86_64 | Same |
 | **Root volume** | 30 GB gp3 | 30 GB gp3 |
 | **Data volume** (optional) | — | 50 GB gp3 (for DB growth) |
 | **Architecture** | x86_64 (amd64) | Same |
@@ -130,7 +130,7 @@ With observability stack (ClickHouse + SigNoz + OTel Collector), add ~2-3 GB.
 
 Summary of everything you need to create in AWS:
 
-1. **EC2 instance** — `t3.medium` or larger, Ubuntu 22.04
+1. **EC2 instance** — `t3.medium` or larger, Amazon Linux 2023
 2. **Elastic IP** — attach to the EC2 instance
 3. **Security groups** — one for ALB, one for EC2 (see above)
 4. **Application Load Balancer** — HTTPS:443 listener + HTTP:80 redirect
@@ -148,7 +148,7 @@ Summary of everything you need to create in AWS:
 ```bash
 # AWS Console -> EC2 -> Launch Instance
 # Name:           aida-production
-# AMI:            Ubuntu Server 22.04 LTS (x86_64)
+# AMI:            Amazon Linux 2023 (x86_64)
 # Instance type:  t3.large (or t3.medium for minimum)
 # Key pair:       Select or create one
 # Security group: Create with SSH (22) from your IP
@@ -158,19 +158,26 @@ Summary of everything you need to create in AWS:
 ### 2. SSH into the instance
 
 ```bash
-ssh -i ~/.ssh/your-key.pem ubuntu@<ELASTIC_IP>
+ssh -i ~/.ssh/your-key.pem ec2-user@<ELASTIC_IP>
 ```
 
 ### 3. Install Docker
 
 ```bash
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y curl wget git unzip htop
+sudo dnf update -y
+sudo dnf install -y curl wget git unzip htop
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
+sudo dnf install -y docker
+sudo systemctl enable docker
+sudo systemctl start docker
 sudo usermod -aG docker $USER
-sudo apt-get install -y docker-compose-plugin
+
+# Install Docker Compose plugin
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Re-login for group changes
 exit
@@ -267,7 +274,7 @@ NODE_ENV=production
 ```bash
 # From local machine
 scp -i ~/.ssh/your-key.pem db/your_dump.sql.gz \
-    ubuntu@<ELASTIC_IP>:~/lohono-db-context/db/
+    ec2-user@<ELASTIC_IP>:~/lohono-db-context/db/
 ```
 
 ### Restore on the server
@@ -332,14 +339,14 @@ Nginx runs on the host (not in Docker) and forwards ALB traffic to the Docker co
 ### Install nginx
 
 ```bash
-sudo apt-get install -y nginx
-sudo rm /etc/nginx/sites-enabled/default
+sudo dnf install -y nginx
+sudo systemctl enable nginx
 ```
 
 ### Create config
 
 ```bash
-sudo tee /etc/nginx/sites-available/lohono-mcp > /dev/null <<'NGINX'
+sudo tee /etc/nginx/conf.d/lohono-mcp.conf > /dev/null <<'NGINX'
 upstream mcp_web {
     server localhost:8080;
     keepalive 32;
@@ -421,9 +428,7 @@ NGINX
 ### Enable and start
 
 ```bash
-sudo ln -sf /etc/nginx/sites-available/lohono-mcp /etc/nginx/sites-enabled/
 sudo nginx -t
-sudo systemctl enable nginx
 sudo systemctl start nginx
 ```
 
@@ -565,20 +570,20 @@ crontab -e
 
 ```cron
 # Daily backup at 02:00 IST
-0 2 * * * cd /home/ubuntu/lohono-db-context && docker compose exec -T postgres pg_dump -U lohono_api lohono_api_production | gzip > db/backup-$(date +\%Y\%m\%d-\%H\%M\%S).sql.gz
+0 2 * * * cd /home/ec2-user/lohono-db-context && docker compose exec -T postgres pg_dump -U lohono_api lohono_api_production | gzip > db/backup-$(date +\%Y\%m\%d-\%H\%M\%S).sql.gz
 
 # Prune backups older than 7 days at 03:00
-0 3 * * * find /home/ubuntu/lohono-db-context/db -name "backup-*.sql.gz" -mtime +7 -delete
+0 3 * * * find /home/ec2-user/lohono-db-context/db -name "backup-*.sql.gz" -mtime +7 -delete
 ```
 
 ### Sync to S3
 
 ```bash
-sudo apt-get install -y awscli
+sudo dnf install -y awscli
 aws configure    # Enter access key, secret, region
 
 # Add to cron after the backup job
-30 2 * * * aws s3 sync /home/ubuntu/lohono-db-context/db s3://your-bucket/lohono-backups/ --exclude "*" --include "backup-*.sql.gz"
+30 2 * * * aws s3 sync /home/ec2-user/lohono-db-context/db s3://your-bucket/lohono-backups/ --exclude "*" --include "backup-*.sql.gz"
 ```
 
 ---
@@ -635,14 +640,16 @@ npx tsx database/scripts/catalog-tables-direct.ts
 
 ## Security Hardening
 
-### Firewall (UFW)
+### Firewall (firewalld)
 
 ```bash
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp       # SSH
-sudo ufw allow 80/tcp       # ALB -> nginx
-sudo ufw enable
+sudo dnf install -y firewalld
+sudo systemctl enable firewalld
+sudo systemctl start firewalld
+
+sudo firewall-cmd --permanent --add-service=ssh      # SSH (port 22)
+sudo firewall-cmd --permanent --add-service=http     # ALB -> nginx (port 80)
+sudo firewall-cmd --reload
 ```
 
 > Don't open 8080, 3000, 3001, 5432, 27017 — they should only be reachable via Docker's internal network or nginx.
@@ -650,8 +657,9 @@ sudo ufw enable
 ### Automatic security updates
 
 ```bash
-sudo apt-get install -y unattended-upgrades
-sudo dpkg-reconfigure -plow unattended-upgrades
+sudo dnf install -y dnf-automatic
+sudo systemctl enable dnf-automatic-install.timer
+sudo systemctl start dnf-automatic-install.timer
 ```
 
 ### File permissions

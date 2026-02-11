@@ -53,7 +53,7 @@ Docker Containers:
 2. **Click "Launch Instance"**
 3. **Configure instance:**
    - **Name**: `lohono-mcp-production`
-   - **AMI**: Ubuntu Server 22.04 LTS (64-bit x86)
+   - **AMI**: Amazon Linux 2023 (64-bit x86)
    - **Instance type**: `t3.xlarge` (4 vCPU, 16 GB RAM)
    - **Key pair**: Select existing or create new SSH key pair
    - **Network settings**:
@@ -108,34 +108,35 @@ Your ALB should have a target group configured:
 
 ```bash
 # Replace with your key file and Elastic IP
-ssh -i ~/.ssh/your-key.pem ubuntu@YOUR_ELASTIC_IP
+ssh -i ~/.ssh/your-key.pem ec2-user@YOUR_ELASTIC_IP
 ```
 
 ### Step 5: Update System
 
 ```bash
-# Update package lists
-sudo apt-get update
-
-# Upgrade packages
-sudo apt-get upgrade -y
+# Update packages
+sudo dnf update -y
 
 # Install basic utilities
-sudo apt-get install -y curl wget git unzip htop
+sudo dnf install -y curl wget git unzip htop
 ```
 
 ### Step 6: Install Docker
 
 ```bash
-# Install Docker using official script
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+# Install Docker
+sudo dnf install -y docker
+sudo systemctl enable docker
+sudo systemctl start docker
 
 # Add current user to docker group (avoid sudo for docker commands)
 sudo usermod -aG docker $USER
 
 # Install Docker Compose plugin
-sudo apt-get install -y docker-compose-plugin
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Log out and back in for group changes to take effect
 exit
@@ -143,7 +144,7 @@ exit
 
 Re-connect to the instance:
 ```bash
-ssh -i ~/.ssh/your-key.pem ubuntu@YOUR_ELASTIC_IP
+ssh -i ~/.ssh/your-key.pem ec2-user@YOUR_ELASTIC_IP
 ```
 
 Verify Docker installation:
@@ -250,7 +251,7 @@ If you have a database dump from your local environment:
 **Transfer dump to server:**
 ```bash
 # From your local machine
-scp -i ~/.ssh/your-key.pem db/your_dump.sql.gz ubuntu@YOUR_ELASTIC_IP:~/lohono-db-context/db/
+scp -i ~/.ssh/your-key.pem db/your_dump.sql.gz ec2-user@YOUR_ELASTIC_IP:~/lohono-db-context/db/
 ```
 
 **On the server:**
@@ -330,10 +331,8 @@ Since you're using an ALB, nginx will act as a reverse proxy on the EC2 instance
 
 ```bash
 # Install nginx
-sudo apt-get install -y nginx
-
-# Remove default site
-sudo rm /etc/nginx/sites-enabled/default
+sudo dnf install -y nginx
+sudo systemctl enable nginx
 ```
 
 **Generate nginx configuration from your .env:**
@@ -352,8 +351,7 @@ EOF
 cat /tmp/nginx-lohono-mcp.conf
 
 # Install the config
-sudo cp /tmp/nginx-lohono-mcp.conf /etc/nginx/sites-available/lohono-mcp
-sudo ln -sf /etc/nginx/sites-available/lohono-mcp /etc/nginx/sites-enabled/
+sudo cp /tmp/nginx-lohono-mcp.conf /etc/nginx/conf.d/lohono-mcp.conf
 
 # Test configuration
 sudo nginx -t
@@ -365,7 +363,7 @@ sudo systemctl start nginx
 
 **Alternative: Manual configuration**
 
-If you prefer to manually create the config, see `docs/nginx-config-reference.conf` for the full template. The script-generated config is recommended for consistency.
+If you prefer to manually create the config, see `docs/nginx-config-reference.conf` for the full template. Place manual configs in `/etc/nginx/conf.d/`. The script-generated config is recommended for consistency.
 
 ### Step 14: Verify Nginx Proxy
 
@@ -384,7 +382,7 @@ curl -I http://localhost/
 
 # Check nginx is running and listening on port 80
 sudo systemctl status nginx
-sudo netstat -tlnp | grep :80
+sudo ss -tlnp | grep :80
 ```
 
 ### Step 15: Configure DNS and SSL for ailabs.lohono.com
@@ -599,22 +597,22 @@ make db-backup
 crontab -e
 
 # Add this line for daily backup at 2 AM
-0 2 * * * cd /home/ubuntu/lohono-db-context && /usr/bin/docker compose exec -T postgres pg_dump -U lohono_api lohono_api_production | gzip > db/backup-$(date +\%Y\%m\%d-\%H\%M\%S).sql.gz
+0 2 * * * cd /home/ec2-user/lohono-db-context && /usr/bin/docker compose exec -T postgres pg_dump -U lohono_api lohono_api_production | gzip > db/backup-$(date +\%Y\%m\%d-\%H\%M\%S).sql.gz
 
 # Keep only last 7 days of backups (add another cron job)
-0 3 * * * find /home/ubuntu/lohono-db-context/db -name "backup-*.sql.gz" -mtime +7 -delete
+0 3 * * * find /home/ec2-user/lohono-db-context/db -name "backup-*.sql.gz" -mtime +7 -delete
 ```
 
 **Copy backups to S3 (recommended):**
 ```bash
-# Install AWS CLI
-sudo apt-get install -y awscli
+# Install AWS CLI (pre-installed on Amazon Linux 2023)
+# If missing: sudo dnf install -y awscli
 
 # Configure AWS credentials
 aws configure
 
 # Add to cron for S3 sync after backup
-30 2 * * * aws s3 sync /home/ubuntu/lohono-db-context/db s3://your-backup-bucket/lohono-db-backups/ --exclude "*" --include "backup-*.sql.gz"
+30 2 * * * aws s3 sync /home/ec2-user/lohono-db-context/db s3://your-backup-bucket/lohono-db-backups/ --exclude "*" --include "backup-*.sql.gz"
 ```
 
 ### Step 20: Update Application
@@ -645,25 +643,27 @@ docker compose up -d --build --no-deps web
 
 ### Step 21: Additional Security Steps
 
-**Firewall with UFW:**
+**Firewall with firewalld:**
 ```bash
-# Enable UFW
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 8080/tcp  # Or restrict to specific IPs
-sudo ufw enable
+sudo dnf install -y firewalld
+sudo systemctl enable firewalld
+sudo systemctl start firewalld
+
+sudo firewall-cmd --permanent --add-service=ssh       # SSH (port 22)
+sudo firewall-cmd --permanent --add-service=http      # HTTP (port 80)
+sudo firewall-cmd --permanent --add-service=https     # HTTPS (port 443)
+sudo firewall-cmd --permanent --add-port=8080/tcp     # Web UI — or restrict to specific IPs
+sudo firewall-cmd --reload
 ```
 
 **Automatic security updates:**
 ```bash
-sudo apt-get install -y unattended-upgrades
-sudo dpkg-reconfigure -plow unattended-upgrades
+sudo dnf install -y dnf-automatic
+sudo systemctl enable dnf-automatic-install.timer
+sudo systemctl start dnf-automatic-install.timer
 ```
 
-**Docker security:**
+**Docker log rotation:**
 ```bash
 # Limit log file sizes (edit /etc/docker/daemon.json)
 sudo tee /etc/docker/daemon.json > /dev/null <<EOF
@@ -698,7 +698,7 @@ crontab -e
 **Monitor Docker containers:**
 ```bash
 # Check if containers are running
-*/5 * * * * docker compose -f /home/ubuntu/lohono-db-context/docker-compose.yml ps | grep -q "Exit\|unhealthy" && echo "Container issue detected" | mail -s "Docker Alert" your@email.com
+*/5 * * * * docker compose -f /home/ec2-user/lohono-db-context/docker-compose.yml ps | grep -q "Exit\|unhealthy" && echo "Container issue detected" | mail -s "Docker Alert" your@email.com
 ```
 
 ## Troubleshooting
