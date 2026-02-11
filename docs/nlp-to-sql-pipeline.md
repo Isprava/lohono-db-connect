@@ -143,7 +143,7 @@ graph TD
     
     Overlap --> AllowDeny([Allow / Deny])
     
-    Allow --> Return[Return: { allowed, reason }]
+    Allow --> Return["Return: { allowed, reason }"]
     Deny --> Return
     AllowDeny --> Return
 ```
