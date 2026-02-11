@@ -69,8 +69,8 @@ function MessageBubble({ msg, isLatest }: { msg: Message; isLatest: boolean }) {
       <div className="flex items-start gap-2 sm:gap-3 max-w-[95%] sm:max-w-[80%]">
         {/* Avatar */}
         {!isUser && (
-          <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden shadow-lg">
-            <img src="/thinker.png" alt="AIDA" className="w-full h-full object-cover" />
+          <div className="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden shadow-lg bg-surface flex items-center justify-center p-1.5">
+            <img src="/thinker.png" alt="AIDA" className="w-full h-full object-contain" />
           </div>
         )}
 
@@ -335,8 +335,8 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
           {sending && (
             <div className="flex justify-start mb-6 animate-fade-in">
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden shadow-lg">
-                  <img src="/thinker.png" alt="AIDA" className="w-full h-full object-cover" />
+                <div className="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden shadow-lg bg-surface flex items-center justify-center p-1.5">
+                  <img src="/thinker.png" alt="AIDA" className="w-full h-full object-contain" />
                 </div>
                 <div className="bg-white border border-secondary/20 rounded-2xl rounded-tl-sm px-5 py-3.5 shadow-md">
                   <div className="flex items-center gap-2">
