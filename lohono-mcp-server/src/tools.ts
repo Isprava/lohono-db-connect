@@ -624,7 +624,7 @@ export async function handleToolCall(
 
     if (name === "get_sales_funnel") {
       const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
-      
+
       // Query patterns from database/schema/*_query_template.yml
       // Optimised: replaced RANK() OVER + subquery with MIN() + GROUP BY HAVING
       const sql = `
@@ -649,7 +649,6 @@ export async function handleToolCall(
             WHERE enquiries.vertical = 'development'
               AND enquiry_type = 'enquiry'
               AND leadable_id IS NULL
-              AND is_trash != TRUE
               AND enquiries.created_at >= ($1::date - INTERVAL '5 hours 30 minutes')
               AND enquiries.created_at < ($2::date + INTERVAL '1 day' - INTERVAL '5 hours 30 minutes')
           ) leads_data
@@ -723,18 +722,18 @@ export async function handleToolCall(
           ELSE 5
         END
       `;
-      
+
       const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify(
-              { 
-                start_date, 
+              {
+                start_date,
                 end_date,
-                rowCount: result.rowCount, 
-                metrics: result.rows 
+                rowCount: result.rowCount,
+                metrics: result.rows
               },
               null,
               2
