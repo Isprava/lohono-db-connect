@@ -1,9 +1,11 @@
 services:
   # ── PostgreSQL Database ─────────────────────────────────────────────────
+  # Only starts with --profile local (local dev). Production uses external DB.
   postgres:
     image: postgres:16-alpine
     container_name: lohono-postgres
     restart: unless-stopped
+    profiles: ["local"]
     environment:
       POSTGRES_USER: ${DB_USER:-lohono_api}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
@@ -44,12 +46,9 @@ services:
       dockerfile: Dockerfile
     container_name: lohono-mcp-server
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-lohono_api}
       DB_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
       DB_NAME: ${DB_NAME:-lohono_api_production}
@@ -86,8 +85,6 @@ services:
     container_name: lohono-mcp-client
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       mongo:
         condition: service_healthy
       mcp-server:
@@ -100,8 +97,8 @@ services:
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-mcp_client}
       CLIENT_PORT: "3001"
       # PG access for staff email verification during auth
-      DB_HOST: postgres
-      DB_PORT: "5432"
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-lohono_api}
       DB_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
       DB_NAME: ${DB_NAME:-lohono_api_production}

@@ -3,6 +3,7 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 COMPOSE     := docker compose
+COMPOSE_LOCAL := docker compose --profile local
 COMPOSE_OBS := docker compose -f docker-compose.observability.yml
 SERVICES    := postgres mongo mcp-server mcp-client chat-client
 
@@ -36,20 +37,20 @@ env: ## Create .env from .env.example (will not overwrite existing)
 # ── All Services ──────────────────────────────────────────────────────────
 
 .PHONY: up
-up: env ## Start all services in foreground
-	$(COMPOSE) up --build
+up: env ## Start all services in foreground (includes local PostgreSQL)
+	$(COMPOSE_LOCAL) up --build
 
 .PHONY: up-d
-up-d: env ## Start all services in background (detached)
-	$(COMPOSE) up -d --build
+up-d: env ## Start all services in background (includes local PostgreSQL)
+	$(COMPOSE_LOCAL) up -d --build
 
 .PHONY: down
 down: ## Stop and remove all containers
-	$(COMPOSE) down
+	$(COMPOSE_LOCAL) down
 
 .PHONY: restart
 restart: ## Restart all services
-	$(COMPOSE) restart
+	$(COMPOSE_LOCAL) restart
 
 .PHONY: service-down
 service-down: ## Stop and remove a single service (usage: make service-down SERVICE=mcp-server)
@@ -58,8 +59,8 @@ service-down: ## Stop and remove a single service (usage: make service-down SERV
 		echo "Available services: $(SERVICES)"; \
 		exit 1; \
 	fi
-	$(COMPOSE) stop $(SERVICE)
-	$(COMPOSE) rm -f $(SERVICE)
+	$(COMPOSE_LOCAL) stop $(SERVICE)
+	$(COMPOSE_LOCAL) rm -f $(SERVICE)
 
 .PHONY: service-up
 service-up: env ## Build and start a single service (usage: make service-up SERVICE=mcp-server)
@@ -68,7 +69,7 @@ service-up: env ## Build and start a single service (usage: make service-up SERV
 		echo "Available services: $(SERVICES)"; \
 		exit 1; \
 	fi
-	$(COMPOSE) up -d --build $(SERVICE)
+	$(COMPOSE_LOCAL) up -d --build $(SERVICE)
 
 .PHONY: build
 build: ## Build all Docker images (no cache)
@@ -81,24 +82,24 @@ ps: ## Show running containers
 # ── Individual Services ───────────────────────────────────────────────────
 
 .PHONY: postgres
-postgres: env ## Start only PostgreSQL
-	$(COMPOSE) up -d postgres
+postgres: env ## Start only PostgreSQL (local dev)
+	$(COMPOSE_LOCAL) up -d postgres
 
 .PHONY: mongo
 mongo: env ## Start only MongoDB
 	$(COMPOSE) up -d mongo
 
 .PHONY: mcp-server
-mcp-server: env ## Start PostgreSQL + MCP server
-	$(COMPOSE) up -d postgres mcp-server
+mcp-server: env ## Start PostgreSQL + MCP server (local dev)
+	$(COMPOSE_LOCAL) up -d postgres mcp-server
 
 .PHONY: mcp-client
-mcp-client: env ## Start databases + MCP server + client
-	$(COMPOSE) up -d postgres mongo mcp-server mcp-client
+mcp-client: env ## Start databases + MCP server + client (local dev)
+	$(COMPOSE_LOCAL) up -d postgres mongo mcp-server mcp-client
 
 .PHONY: chat-client
-chat-client: env ## Start everything including chat-client frontend
-	$(COMPOSE) up -d postgres mongo mcp-server mcp-client chat-client
+chat-client: env ## Start everything including chat-client frontend (local dev)
+	$(COMPOSE_LOCAL) up -d postgres mongo mcp-server mcp-client chat-client
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 
@@ -191,8 +192,9 @@ dev: ## Print instructions for local dev (run each in a separate terminal)
 # ── Deployment ────────────────────────────────────────────────────────────
 
 .PHONY: deploy
-deploy: env ## Build and start all services (production, detached)
-	@echo "═══ Deploying Lohono AI ═══"
+deploy: env ## Build and start all services (production — no local PostgreSQL)
+	@echo "═══ Deploying Lohono AI (production) ═══"
+	@echo "Using external DB at $${DB_HOST:-postgres}:$${DB_PORT:-5432}"
 	$(COMPOSE) up -d --build --remove-orphans
 	@echo ""
 	@echo "═══ Deployment complete ═══"
@@ -237,8 +239,9 @@ obs-clean: ## Stop observability stack and remove volumes
 	@echo "Observability stack cleaned up."
 
 .PHONY: deploy-all
-deploy-all: env obs-network ## Deploy app + observability (1-click production)
-	@echo "═══ Deploying Lohono AI + Observability ═══"
+deploy-all: env obs-network ## Deploy app + observability (production — no local PostgreSQL)
+	@echo "═══ Deploying Lohono AI + Observability (production) ═══"
+	@echo "Using external DB at $${DB_HOST:-postgres}:$${DB_PORT:-5432}"
 	$(COMPOSE_OBS) up -d --build
 	OTEL_SDK_DISABLED=false $(COMPOSE) up -d --build --remove-orphans
 	@echo ""
@@ -256,7 +259,7 @@ deploy-all: env obs-network ## Deploy app + observability (1-click production)
 
 .PHONY: clean
 clean: ## Stop containers and remove images + volumes
-	$(COMPOSE) down --rmi local --volumes --remove-orphans
+	$(COMPOSE_LOCAL) down --rmi local --volumes --remove-orphans
 	@echo "Cleaned up containers, images, and volumes."
 
 .PHONY: clean-all
