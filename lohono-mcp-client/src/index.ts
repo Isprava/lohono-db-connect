@@ -11,12 +11,17 @@ import { logInfo, logError } from "../../shared/observability/src/index.js";
 const { Pool } = pg;
 
 // PostgreSQL pool for staff verification
+const dbHost = process.env.DB_HOST || "localhost";
 const pgPool = new Pool({
-  host: process.env.DB_HOST || "localhost",
+  host: dbHost,
   port: parseInt(process.env.DB_PORT || "5433"),
   user: process.env.DB_USER || "lohono_api",
   database: process.env.DB_NAME || "lohono_api_production",
   password: process.env.DB_PASSWORD || "",
+  ssl:
+    process.env.DB_SSL === "false" || dbHost === "localhost"
+      ? false
+      : { rejectUnauthorized: false },
 });
 
 async function main() {
