@@ -33,11 +33,6 @@ COPY database/ ./database/
 
 # Environment defaults
 ENV NODE_ENV=production
-ENV DB_HOST=postgres
-ENV DB_PORT=5432
-ENV DB_USER=lohono_api
-ENV DB_NAME=lohono_api_production
-ENV DB_PASSWORD=lohono_api_password
 ENV SALES_FUNNEL_RULES_PATH=/app/database/schema/sales_funnel_rules_v2.yml
 ENV PORT=3000
 

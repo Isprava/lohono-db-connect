@@ -3,9 +3,8 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 COMPOSE     := docker compose
-COMPOSE_LOCAL := docker compose --profile local
 COMPOSE_OBS := docker compose -f docker-compose.observability.yml
-SERVICES    := postgres mongo mcp-server mcp-client chat-client
+SERVICES    := mongo mcp-server mcp-client chat-client
 
 # Default env file
 ENV_FILE := .env
@@ -37,20 +36,20 @@ env: ## Create .env from .env.example (will not overwrite existing)
 # ── All Services ──────────────────────────────────────────────────────────
 
 .PHONY: up
-up: env ## Start all services in foreground (includes local PostgreSQL)
-	$(COMPOSE_LOCAL) up --build
+up: env ## Start all services in foreground
+	$(COMPOSE) up --build
 
 .PHONY: up-d
-up-d: env ## Start all services in background (includes local PostgreSQL)
-	$(COMPOSE_LOCAL) up -d --build
+up-d: env ## Start all services in background
+	$(COMPOSE) up -d --build
 
 .PHONY: down
 down: ## Stop and remove all containers
-	$(COMPOSE_LOCAL) down
+	$(COMPOSE) down
 
 .PHONY: restart
 restart: ## Restart all services
-	$(COMPOSE_LOCAL) restart
+	$(COMPOSE) restart
 
 .PHONY: service-down
 service-down: ## Stop and remove a single service (usage: make service-down SERVICE=mcp-server)
@@ -59,8 +58,8 @@ service-down: ## Stop and remove a single service (usage: make service-down SERV
 		echo "Available services: $(SERVICES)"; \
 		exit 1; \
 	fi
-	$(COMPOSE_LOCAL) stop $(SERVICE)
-	$(COMPOSE_LOCAL) rm -f $(SERVICE)
+	$(COMPOSE) stop $(SERVICE)
+	$(COMPOSE) rm -f $(SERVICE)
 
 .PHONY: service-up
 service-up: env ## Build and start a single service (usage: make service-up SERVICE=mcp-server)
@@ -69,7 +68,7 @@ service-up: env ## Build and start a single service (usage: make service-up SERV
 		echo "Available services: $(SERVICES)"; \
 		exit 1; \
 	fi
-	$(COMPOSE_LOCAL) up -d --build $(SERVICE)
+	$(COMPOSE) up -d --build $(SERVICE)
 
 .PHONY: build
 build: ## Build all Docker images (no cache)
@@ -81,35 +80,27 @@ ps: ## Show running containers
 
 # ── Individual Services ───────────────────────────────────────────────────
 
-.PHONY: postgres
-postgres: env ## Start only PostgreSQL (local dev)
-	$(COMPOSE_LOCAL) up -d postgres
-
 .PHONY: mongo
 mongo: env ## Start only MongoDB
 	$(COMPOSE) up -d mongo
 
 .PHONY: mcp-server
-mcp-server: env ## Start PostgreSQL + MCP server (local dev)
-	$(COMPOSE_LOCAL) up -d postgres mcp-server
+mcp-server: env ## Start MCP server (requires external DB via .env)
+	$(COMPOSE) up -d mcp-server
 
 .PHONY: mcp-client
-mcp-client: env ## Start databases + MCP server + client (local dev)
-	$(COMPOSE_LOCAL) up -d postgres mongo mcp-server mcp-client
+mcp-client: env ## Start MongoDB + MCP server + client
+	$(COMPOSE) up -d mongo mcp-server mcp-client
 
 .PHONY: chat-client
-chat-client: env ## Start everything including chat-client frontend (local dev)
-	$(COMPOSE_LOCAL) up -d postgres mongo mcp-server mcp-client chat-client
+chat-client: env ## Start everything including chat-client frontend
+	$(COMPOSE) up -d mongo mcp-server mcp-client chat-client
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 
 .PHONY: logs
 logs: ## Tail logs from all services
 	$(COMPOSE) logs -f
-
-.PHONY: logs-postgres
-logs-postgres: ## Tail PostgreSQL logs
-	$(COMPOSE) logs -f postgres
 
 .PHONY: logs-mongo
 logs-mongo: ## Tail MongoDB logs
@@ -128,25 +119,26 @@ logs-chat-client: ## Tail chat-client frontend logs
 	$(COMPOSE) logs -f chat-client
 
 # ── Database: Backup & Restore ────────────────────────────────────────────
-# Backups are stored in ./db/ and mounted at /backups in the postgres container.
+# Uses external PostgreSQL defined by DB_* vars in .env.
+# Requires pg_dump / psql on the host (install: apt install postgresql-client).
 
 .PHONY: db-backup
-db-backup: ## Dump PostgreSQL to db/<timestamp>.sql.gz
+db-backup: ## Dump external PostgreSQL to db/<timestamp>.sql.gz
 	@mkdir -p $(BACKUP_DIR)
-	@echo "Backing up $(DB_NAME) → $(BACKUP_DIR)/$(TIMESTAMP).sql.gz ..."
-	$(COMPOSE) exec -T postgres pg_dump -U $(DB_USER) -d $(DB_NAME) \
+	@echo "Backing up $(DB_NAME) @ $${DB_HOST}:$${DB_PORT} → $(BACKUP_DIR)/$(TIMESTAMP).sql.gz ..."
+	PGPASSWORD=$(DB_PASSWORD) pg_dump -h $${DB_HOST} -p $${DB_PORT} -U $(DB_USER) -d $(DB_NAME) \
 		| gzip > $(BACKUP_DIR)/$(TIMESTAMP).sql.gz
 	@echo "Done: $(BACKUP_DIR)/$(TIMESTAMP).sql.gz"
 
 .PHONY: db-restore
-db-restore: ## Restore PostgreSQL from DUMP=db/<file>.sql.gz
+db-restore: ## Restore external PostgreSQL from DUMP=db/<file>.sql.gz
 	@if [ -z "$(DUMP)" ]; then \
 		echo "Usage: make db-restore DUMP=db/<file>.sql.gz"; \
 		echo "Available dumps:"; ls -1 $(BACKUP_DIR)/*.sql.gz 2>/dev/null || echo "  (none)"; \
 		exit 1; \
 	fi
-	@echo "Restoring $(DUMP) → $(DB_NAME) ..."
-	gunzip -c $(DUMP) | $(COMPOSE) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME)
+	@echo "Restoring $(DUMP) → $(DB_NAME) @ $${DB_HOST}:$${DB_PORT} ..."
+	gunzip -c $(DUMP) | PGPASSWORD=$(DB_PASSWORD) psql -h $${DB_HOST} -p $${DB_PORT} -U $(DB_USER) -d $(DB_NAME)
 	@echo "Restore complete."
 
 .PHONY: db-list
@@ -155,8 +147,8 @@ db-list: ## List available database backups
 	@ls -lh $(BACKUP_DIR)/*.sql.gz 2>/dev/null || echo "  (none)"
 
 .PHONY: db-shell
-db-shell: ## Open a psql shell in the postgres container
-	$(COMPOSE) exec postgres psql -U $(DB_USER) -d $(DB_NAME)
+db-shell: ## Open a psql shell to external PostgreSQL
+	PGPASSWORD=$(DB_PASSWORD) psql -h $${DB_HOST} -p $${DB_PORT} -U $(DB_USER) -d $(DB_NAME)
 
 .PHONY: mongo-shell
 mongo-shell: ## Open a mongosh shell in the mongo container
@@ -183,18 +175,20 @@ dev-chat-client: ## Run chat-client frontend dev server (Vite, port 8080)
 
 .PHONY: dev
 dev: ## Print instructions for local dev (run each in a separate terminal)
+	@echo "Ensure DB_* vars in .env point to your external PostgreSQL."
+	@echo ""
 	@echo "Start each in a separate terminal:"
-	@echo "  1. make postgres mongo          # databases"
+	@echo "  1. make mongo                   # MongoDB (conversations)"
 	@echo "  2. make dev-server              # MCP SSE server  (port 3000)"
 	@echo "  3. make dev-client              # Client REST API (port 3001)"
-	@echo "  4. make dev-chat-client                 # Web UI          (port 8080)"
+	@echo "  4. make dev-chat-client         # Web UI          (port 8080)"
 
 # ── Deployment ────────────────────────────────────────────────────────────
 
 .PHONY: deploy
-deploy: env ## Build and start all services (production — no local PostgreSQL)
+deploy: env ## Build and start all services (production)
 	@echo "═══ Deploying Lohono AI (production) ═══"
-	@echo "Using external DB at $${DB_HOST:-postgres}:$${DB_PORT:-5432}"
+	@echo "Using external DB at $${DB_HOST}:$${DB_PORT}"
 	$(COMPOSE) up -d --build --remove-orphans
 	@echo ""
 	@echo "═══ Deployment complete ═══"
@@ -239,9 +233,9 @@ obs-clean: ## Stop observability stack and remove volumes
 	@echo "Observability stack cleaned up."
 
 .PHONY: deploy-all
-deploy-all: env obs-network ## Deploy app + observability (production — no local PostgreSQL)
+deploy-all: env obs-network ## Deploy app + observability (production)
 	@echo "═══ Deploying Lohono AI + Observability (production) ═══"
-	@echo "Using external DB at $${DB_HOST:-postgres}:$${DB_PORT:-5432}"
+	@echo "Using external DB at $${DB_HOST}:$${DB_PORT}"
 	$(COMPOSE_OBS) up -d --build
 	OTEL_SDK_DISABLED=false $(COMPOSE) up -d --build --remove-orphans
 	@echo ""
@@ -259,7 +253,7 @@ deploy-all: env obs-network ## Deploy app + observability (production — no loc
 
 .PHONY: clean
 clean: ## Stop containers and remove images + volumes
-	$(COMPOSE_LOCAL) down --rmi local --volumes --remove-orphans
+	$(COMPOSE) down --rmi local --volumes --remove-orphans
 	@echo "Cleaned up containers, images, and volumes."
 
 .PHONY: clean-all

@@ -1,28 +1,4 @@
 services:
-  # ── PostgreSQL Database ─────────────────────────────────────────────────
-  # Only starts with --profile local (local dev). Production uses external DB.
-  postgres:
-    image: postgres:16-alpine
-    container_name: lohono-postgres
-    restart: unless-stopped
-    profiles: ["local"]
-    environment:
-      POSTGRES_USER: ${DB_USER:-lohono_api}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
-      POSTGRES_DB: ${DB_NAME:-lohono_api_production}
-    ports:
-      - "${DB_EXTERNAL_PORT:-5433}:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      # Mount db/ for backup/restore (SQL dumps live here)
-      - ./db:/backups
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-lohono_api} -d ${DB_NAME:-lohono_api_production}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   # ── MongoDB (conversation state) ───────────────────────────────────────
   mongo:
     image: mongo:7
@@ -46,12 +22,14 @@ services:
       dockerfile: Dockerfile
     container_name: lohono-mcp-server
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      DB_HOST: ${DB_HOST:-postgres}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-lohono_api}
-      DB_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
-      DB_NAME: ${DB_NAME:-lohono_api_production}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
       REDASH_URL: ${REDASH_URL:-}
       REDASH_API_KEY: ${REDASH_API_KEY:-}
       ACL_CONFIG_PATH: /app/database/schema/acl.yml
@@ -84,6 +62,8 @@ services:
       dockerfile: Dockerfile.client
     container_name: lohono-mcp-client
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mongo:
         condition: service_healthy
@@ -97,11 +77,11 @@ services:
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-mcp_client}
       CLIENT_PORT: "3001"
       # PG access for staff email verification during auth
-      DB_HOST: ${DB_HOST:-postgres}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-lohono_api}
-      DB_PASSWORD: ${DB_PASSWORD:-lohono_api_password}
-      DB_NAME: ${DB_NAME:-lohono_api_production}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
       # ── Observability ──
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_SERVICE_NAME: lohono-mcp-client
@@ -132,8 +112,6 @@ services:
       - "${WEB_PORT:-8080}:8080"
 
 volumes:
-  pgdata:
-    driver: local
   mongodata:
     driver: local
 
