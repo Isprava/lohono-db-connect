@@ -2,9 +2,10 @@
 # Lohono AI — Makefile
 # ═══════════════════════════════════════════════════════════════════════════
 
-COMPOSE     := docker compose
-COMPOSE_OBS := docker compose -f docker-compose.observability.yml
-SERVICES    := mongo mcp-server mcp-client chat-client
+COMPOSE       := docker compose
+COMPOSE_LOCAL := docker compose -f docker-compose.yml -f docker-compose.local.yml
+COMPOSE_OBS   := docker compose -f docker-compose.observability.yml
+SERVICES      := mongo mcp-server mcp-client chat-client
 
 # Default env file
 ENV_FILE := .env
@@ -36,12 +37,12 @@ env: ## Create .env from .env.example (will not overwrite existing)
 # ── All Services ──────────────────────────────────────────────────────────
 
 .PHONY: up
-up: env ## Start all services in foreground
-	$(COMPOSE) up --build
+up: env ## Start all services in foreground (local — with SSH tunnel)
+	$(COMPOSE_LOCAL) up --build
 
 .PHONY: up-d
-up-d: env ## Start all services in background
-	$(COMPOSE) up -d --build
+up-d: env ## Start all services in background (local — with SSH tunnel)
+	$(COMPOSE_LOCAL) up -d --build
 
 .PHONY: down
 down: ## Stop and remove all containers
@@ -117,6 +118,10 @@ logs-mcp-client: ## Tail MCP client logs
 .PHONY: logs-chat-client
 logs-chat-client: ## Tail chat-client frontend logs
 	$(COMPOSE) logs -f chat-client
+
+.PHONY: logs-tunnel
+logs-tunnel: ## Tail SSH tunnel logs
+	$(COMPOSE_LOCAL) logs -f ssh-tunnel
 
 # ── Database: Backup & Restore ────────────────────────────────────────────
 # Uses external PostgreSQL defined by DB_* vars in .env.

@@ -1,0 +1,55 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Local development override — SSH tunnel to RDS readonly replica
+# Loaded automatically by: make up / make up-d
+# NOT loaded by: make deploy / make deploy-all
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  # ── SSH Tunnel to RDS ───────────────────────────────────────────────────
+  ssh-tunnel:
+    build:
+      context: .
+      dockerfile: Dockerfile.tunnel
+    container_name: lohono-ssh-tunnel
+    restart: unless-stopped
+    command:
+      - "-vv"
+      - "-nNT"
+      - "-o"
+      - "StrictHostKeyChecking=no"
+      - "-o"
+      - "ServerAliveInterval=30"
+      - "-o"
+      - "ServerAliveCountMax=3"
+      - "-o"
+      - "ExitOnForwardFailure=yes"
+      - "-L"
+      - "0.0.0.0:6333:lohono-api-readonly.c9xcxpg6g1mj.ap-south-1.rds.amazonaws.com:5432"
+      - "ubuntu@15.206.197.24"
+    ports:
+      - "6333:6333"
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6333"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ── Override DB connection to use tunnel ────────────────────────────────
+  mcp-server:
+    depends_on:
+      ssh-tunnel:
+        condition: service_healthy
+    environment:
+      DB_HOST: ssh-tunnel
+      DB_PORT: "6333"
+
+  mcp-client:
+    depends_on:
+      ssh-tunnel:
+        condition: service_healthy
+    environment:
+      DB_HOST: ssh-tunnel
+      DB_PORT: "6333"
