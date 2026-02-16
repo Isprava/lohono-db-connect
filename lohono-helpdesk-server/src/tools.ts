@@ -37,7 +37,7 @@ export const toolDefinitions = [
   {
     name: "query_knowledge_base",
     description:
-      "Search the Lohono Stays / Isprava help desk knowledge base for answers about policies, procedures, SOPs, villa information, guest guidelines, and operational documentation. Use this tool when users ask about company policies, operational procedures, property details, or any non-data/non-metric questions.",
+      "Search the Lohono Stays / Isprava help desk knowledge base for answers about policies, procedures, SOPs, villa information, guest guidelines, operational documentation, and Goa building/construction regulations (Goa DCR — the Goa Regulation of Land Development and Building Construction Act 2008, and the Goa Land Development and Building Construction Regulations 2010, with amendments up to September 2024). Use this tool for: company policies, operational procedures, property details, non-data/non-metric questions, FAR/FSI, setbacks, zoning regulations, parking requirements, fire safety, building heights, plot coverage, sub-division rules, and any Goa-specific construction or land development regulation.",
     inputSchema: {
       type: "object" as const,
       properties: {
