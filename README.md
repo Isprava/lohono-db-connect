@@ -1,14 +1,16 @@
 # Lohono AI — Database Context MCP Platform
 
-An AI-powered data analyst for Isprava, Chapter and Lohono Stays. Users ask natural-language questions via a web UI, which are answered by Claude using MCP tools that query the production PostgreSQL database.
+An AI-powered data analyst for Isprava, Chapter and Lohono Stays. Users ask natural-language questions via a web UI, which are answered by Claude using MCP tools that query the production PostgreSQL database and an AWS Bedrock Knowledge Base for operational documentation.
 
 ## Architecture
 
 ```mermaid
 graph LR
-    Web["Web UI<br/><i>React + nginx</i><br/>:8080"] -->|HTTP /api/*| Client["MCP Client<br/><i>Express + Claude</i><br/>:3001"]
+    Web["Chat Client<br/><i>React + nginx</i><br/>:8080"] -->|HTTP /api/*| Client["MCP Client<br/><i>Express + Claude</i><br/>:3001"]
     Client -->|SSE| Server["MCP Server<br/><i>Express + MCP SDK</i><br/>:3000"]
-    Server -->|SQL| PG[("PostgreSQL<br/><i>lohono_api_production</i><br/>:5433")]
+    Client -->|SSE| Helpdesk["Helpdesk Server<br/><i>Express + MCP SDK</i><br/>:3002"]
+    Server -->|SQL| PG[("PostgreSQL<br/><i>RDS Readonly Replica</i>")]
+    Helpdesk -->|API| Bedrock["AWS Bedrock<br/><i>Knowledge Base</i>"]
     Client -->|Sessions &amp; Auth| Mongo[("MongoDB<br/><i>mcp_client</i><br/>:27017")]
     Client -.->|Staff verification| PG
 ```
@@ -18,27 +20,56 @@ graph LR
 ```mermaid
 sequenceDiagram
     participant U as User Browser
-    participant W as Web UI :8080
+    participant W as Chat Client :8080
     participant C as MCP Client :3001
     participant A as Claude API
     participant S as MCP Server :3000
+    participant H as Helpdesk Server :3002
     participant PG as PostgreSQL
+    participant KB as AWS Bedrock KB
     participant M as MongoDB
 
     U->>W: Ask a question
     W->>C: POST /api/sessions/:id/messages
     C->>M: Save user message
     C->>A: messages.create (with MCP tools)
-    A-->>C: tool_use: query
-    C->>S: callTool(query, sql)
-    S->>PG: SELECT ... (read-only txn)
-    PG-->>S: rows
-    S-->>C: tool result JSON
+
+    alt Data / SQL question
+        A-->>C: tool_use: get_sales_funnel / query
+        C->>S: callTool(name, args)
+        S->>PG: SELECT ... (read-only txn)
+        PG-->>S: rows
+        S-->>C: tool result JSON
+    else Policy / SOP / Regulatory question
+        A-->>C: tool_use: query_knowledge_base
+        C->>H: callTool(query_knowledge_base, args)
+        H->>KB: Retrieve & Generate
+        KB-->>H: citations + answer
+        H-->>C: tool result JSON
+    end
+
     C->>A: tool_result
     A-->>C: assistant text
     C->>M: Save assistant message
     C-->>W: assistantText + toolCalls
     W-->>U: Render response
+```
+
+### Multi-MCP Server Routing
+
+The MCP Client connects to multiple MCP servers simultaneously. Tool calls are routed to the correct server automatically based on which server registered the tool.
+
+```mermaid
+graph TD
+    Client[MCP Client :3001] -->|SSE| DB["DB Context Server :3000<br/><i>Schema, query, sales funnel tools</i>"]
+    Client -->|SSE| HD["Helpdesk Server :3002<br/><i>query_knowledge_base tool</i>"]
+
+    DB --> T1[get_table_schema]
+    DB --> T2[get_sales_funnel]
+    DB --> T3[search_tables]
+    DB --> T4["... 20+ tools"]
+
+    HD --> T5[query_knowledge_base]
 ```
 
 ### Observability Flow
@@ -47,6 +78,7 @@ sequenceDiagram
 graph LR
     Server["MCP Server"] -->|OTLP gRPC| OTel["OTel Collector<br/>:4317"]
     Client["MCP Client"] -->|OTLP gRPC| OTel
+    Helpdesk["Helpdesk Server"] -->|OTLP gRPC| OTel
     OTel -->|OTLP| SigOTel["SigNoz Collector"]
     SigOTel -->|Traces| CH[("ClickHouse")]
     SigOTel -->|Logs| CH
@@ -55,12 +87,24 @@ graph LR
     FE["SigNoz UI<br/>:3301"] --> QS
 ```
 
+### Local Development — SSH Tunnel
+
+For local development, database connections route through an SSH tunnel to the RDS readonly replica. This is handled automatically by `docker-compose.local.yml`.
+
+```mermaid
+graph LR
+    MCP["MCP Server"] -->|port 6333| Tunnel["SSH Tunnel<br/><i>Alpine + OpenSSH</i>"]
+    MCPClient["MCP Client"] -->|port 6333| Tunnel
+    Tunnel -->|"SSH → RDS :5432"| RDS[("RDS Readonly Replica<br/><i>ap-south-1</i>")]
+```
+
 **Services:**
 
-- **Web Frontend** — React SPA served via nginx. Handles Google OAuth login and provides a chat interface.
-- **MCP Client** — Express REST API. Manages sessions (MongoDB), authenticates users (Google OAuth + staff check in Postgres), and orchestrates Claude to answer questions using MCP tools.
+- **Chat Client** — React SPA served via nginx. Handles Google OAuth login and provides a chat interface.
+- **MCP Client** — Express REST API. Manages sessions (MongoDB), authenticates users (Google OAuth + staff check in Postgres), and orchestrates Claude to answer questions using MCP tools from multiple servers.
 - **MCP Server** — Express SSE server implementing the Model Context Protocol. Exposes database query tools, schema intelligence, Redash integration, and ACL enforcement.
-- **PostgreSQL** — Lohono production database (`lohono_api_production`).
+- **Helpdesk Server** — Express SSE server implementing MCP. Queries AWS Bedrock Knowledge Base for policies, SOPs, villa information, Goa DCR/building regulations, and operational documentation.
+- **PostgreSQL** — Lohono production database (`lohono_api_production`) via external RDS readonly replica.
 - **MongoDB** — Stores chat sessions, messages, and auth sessions.
 
 ## Prerequisites
@@ -68,7 +112,9 @@ graph LR
 - **Docker** and **Docker Compose** (v2)
 - **Node.js 20+** and **npm** (for local development only)
 - An **Anthropic API key** (Claude access)
-- A PostgreSQL database dump (placed in `db/`)
+- An external **PostgreSQL** database (RDS or self-hosted)
+- **AWS credentials** with Bedrock access (for helpdesk features)
+- **SSH key** access to the bastion host (for local development SSH tunnel)
 
 ## Getting Started
 
@@ -84,23 +130,14 @@ cp .env.example .env
 
 Edit `.env` and fill in the **required** values (see [Environment Variables](#environment-variables) below).
 
-### 2. Restore the database (first time only)
-
-Place your SQL dump in the `db/` directory, then:
+### 2. Start everything
 
 ```bash
-# Start just Postgres
-make postgres
-
-# Restore from dump
-make db-restore DUMP=db/your_dump.sql.gz
-```
-
-### 3. Start everything
-
-```bash
-# All services in background (builds Docker images automatically)
+# Local development (with SSH tunnel to RDS)
 make up-d
+
+# Production deployment (direct DB connection)
+make deploy
 ```
 
 The web UI will be available at **http://localhost:8080**.
@@ -109,22 +146,65 @@ The web UI will be available at **http://localhost:8080**.
 
 All configuration lives in `.env`. Copy from `.env.example` and fill in the required values:
 
+### PostgreSQL (External)
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `DB_HOST` | **Yes** | — | External database hostname (overridden to `ssh-tunnel` for local dev) |
+| `DB_PORT` | | `5432` | PostgreSQL port (overridden to `6333` for local dev) |
 | `DB_USER` | | `lohono_api` | PostgreSQL username |
-| `DB_PASSWORD` | **Yes** | `lohono_api_password` | PostgreSQL password — **change in production** |
+| `DB_PASSWORD` | **Yes** | — | PostgreSQL password |
 | `DB_NAME` | | `lohono_api_production` | PostgreSQL database name |
-| `DB_EXTERNAL_PORT` | | `5433` | Host port to expose Postgres on |
+
+### MongoDB
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `MONGO_PORT` | | `27017` | Host port for MongoDB |
 | `MONGODB_DB_NAME` | | `mcp_client` | MongoDB database name for sessions |
+
+### MCP Server
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `MCP_PORT` | | `3000` | Host port for the MCP SSE server |
-| `ANTHROPIC_API_KEY` | **Yes** | — | Claude API key from Anthropic |
-| `CLAUDE_MODEL` | | `claude-sonnet-4-5-20250929` | Claude model to use |
-| `CLIENT_PORT` | | `3001` | Host port for the MCP client REST API |
-| `WEB_PORT` | | `8080` | Host port for the web UI |
 | `REDASH_URL` | | — | Redash instance URL (optional) |
 | `REDASH_API_KEY` | | — | Redash API key (optional) |
 | `MCP_USER_EMAIL` | | — | Fallback email for ACL in stdio mode |
+
+### Helpdesk Server (AWS Bedrock Knowledge Base)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HELPDESK_PORT` | | `3002` | Host port for helpdesk MCP server |
+| `BEDROCK_KB_ID` | **Yes** | — | AWS Bedrock Knowledge Base ID |
+| `BEDROCK_MODEL_ARN` | | — | Bedrock model ARN for generation (optional) |
+| `AWS_REGION` | | `ap-south-1` | AWS region for Bedrock |
+| `AWS_ACCESS_KEY_ID` | **Yes** | — | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | **Yes** | — | AWS secret key |
+| `HELPDESK_SSE_URL` | | `http://helpdesk-server:3002` | MCP Client to Helpdesk Server URL |
+
+### MCP Client
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | **Yes** | — | Claude API key from Anthropic |
+| `CLAUDE_MODEL` | | `claude-sonnet-4-5-20250929` | Claude model to use |
+| `CLIENT_PORT` | | `3001` | Host port for the MCP client REST API |
+
+### Web Frontend & Deployment
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `WEB_PORT` | | `8080` | Host port for the web UI |
+| `DEPLOYMENT_MODE` | | `local` | `local` (Vite proxy) or `production` (nginx proxy) |
+| `PUBLIC_DOMAIN` | | `ailabs.lohono.com` | Public domain (production mode only) |
+
+### Observability
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OTEL_SDK_DISABLED` | | `true` | Set to `false` when running `make obs-up` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | | `http://otel-collector:4317` | OpenTelemetry Collector endpoint |
 | `SIGNOZ_PORT` | | `3301` | Host port for SigNoz UI |
 | `LOG_LEVEL` | | `info` | Log level: `debug`, `info`, `warn`, `error` |
@@ -135,26 +215,38 @@ All configuration lives in `.env`. Copy from `.env.example` and fill in the requ
 ### Run all services at once (Docker)
 
 ```bash
-# Foreground (see all logs interleaved)
+# Local development — with SSH tunnel (foreground)
 make up
 
-# Background (detached)
+# Local development — with SSH tunnel (background)
 make up-d
+
+# Production — direct DB connection (background)
+make deploy
 
 # Stop everything
 make down
 ```
+
+> **Note:** `make up` / `make up-d` automatically include the SSH tunnel via `docker-compose.local.yml`. `make deploy` uses only `docker-compose.yml` for direct database connections.
 
 ### Run individual services
 
 Each command starts the service and its dependencies:
 
 ```bash
-make postgres       # PostgreSQL only
-make mongo          # MongoDB only
-make mcp-server     # PostgreSQL + MCP Server
-make mcp-client     # PostgreSQL + MongoDB + MCP Server + Client
-make web            # All services including web frontend
+make mongo              # MongoDB only
+make mcp-server         # MCP Server (requires external DB via .env)
+make helpdesk-server    # Helpdesk MCP Server (requires AWS credentials)
+make mcp-client         # MongoDB + MCP Server + Helpdesk Server + Client
+make chat-client        # All services including chat frontend
+```
+
+### Manage individual services
+
+```bash
+make service-up SERVICE=mcp-server      # Rebuild and start a single service
+make service-down SERVICE=mcp-server    # Stop and remove a single service
 ```
 
 ### Local development (no Docker for app code)
@@ -163,7 +255,7 @@ Start databases in Docker, then run app services locally with hot-reload:
 
 ```bash
 # Terminal 1 — databases
-make postgres mongo
+make mongo
 
 # Terminal 2 — MCP Server (port 3000)
 make dev-server
@@ -171,8 +263,8 @@ make dev-server
 # Terminal 3 — MCP Client API (port 3001)
 make dev-client
 
-# Terminal 4 — Web UI dev server (port 5173, proxied to 8080)
-make dev-web
+# Terminal 4 — Chat Client dev server (port 8080)
+make dev-chat-client
 ```
 
 Or just run `make dev` to see these instructions.
@@ -183,22 +275,25 @@ Or just run `make dev` to see these instructions.
 make dev-install
 ```
 
+> For local development, ensure `DB_*` vars in `.env` point to your external PostgreSQL instance.
+
 ## Accessing Services
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Web UI | http://localhost:8080 | Chat interface (login via Google OAuth) |
+| Chat Client | http://localhost:8080 | Chat interface (login via Google OAuth) |
 | MCP Client API | http://localhost:3001/api/health | REST API for sessions and chat |
 | MCP Server | http://localhost:3000/health | MCP SSE server health check |
+| Helpdesk Server | http://localhost:3002/health | Helpdesk MCP server health check |
 | MCP SSE Endpoint | http://localhost:3000/sse | SSE transport for MCP protocol |
-| PostgreSQL | `localhost:5433` | Direct PG access (e.g. `psql -h localhost -p 5433 -U lohono_api -d lohono_api_production`) |
+| Helpdesk SSE Endpoint | http://localhost:3002/sse | SSE transport for helpdesk MCP |
 | MongoDB | `localhost:27017` | Direct Mongo access |
 | SigNoz UI | http://localhost:3301 | Observability dashboard (if running) |
 
 ### Database shells
 
 ```bash
-make db-shell       # psql shell into Postgres
+make db-shell       # psql shell into external PostgreSQL
 make mongo-shell    # mongosh shell into MongoDB
 ```
 
@@ -209,7 +304,7 @@ make mongo-shell    # mongosh shell into MongoDB
 ```bash
 # 1. Configure environment
 cp .env.example .env
-# Edit .env — set ANTHROPIC_API_KEY, DB_PASSWORD, etc.
+# Edit .env — set ANTHROPIC_API_KEY, DB_HOST, DB_PASSWORD, AWS keys, etc.
 
 # 2. Deploy all services
 make deploy
@@ -223,7 +318,7 @@ This builds all Docker images and starts everything in detached mode. Output sho
 make deploy-all
 ```
 
-This starts the observability stack (ClickHouse, SigNoz, OTel Collector) first, then the application services. All traces and structured logs from the MCP Server and Client are sent to SigNoz automatically.
+This starts the observability stack (ClickHouse, SigNoz, OTel Collector) first, then the application services with `OTEL_SDK_DISABLED=false`. All traces and structured logs from the MCP Server, Helpdesk Server, and Client are sent to SigNoz automatically.
 
 ### Deploy observability stack separately
 
@@ -244,8 +339,11 @@ docker compose up -d --build --no-deps mcp-client
 # Rebuild and restart just the MCP server
 docker compose up -d --build --no-deps mcp-server
 
-# Rebuild and restart just the web frontend
-docker compose up -d --build --no-deps web
+# Rebuild and restart just the helpdesk server
+docker compose up -d --build --no-deps helpdesk-server
+
+# Rebuild and restart just the chat client
+docker compose up -d --build --no-deps chat-client
 ```
 
 ### Server prerequisites
@@ -270,6 +368,8 @@ make deploy-all
 
 ### Database backups
 
+Requires `pg_dump` / `psql` on the host (`apt install postgresql-client`):
+
 ```bash
 make db-backup                          # Creates db/<timestamp>.sql.gz
 make db-list                            # List available backups
@@ -281,12 +381,13 @@ make db-restore DUMP=db/20260207.sql.gz # Restore a specific backup
 ### Docker container logs
 
 ```bash
-make logs               # All services (interleaved, tailed)
-make logs-mcp-server    # MCP Server only
-make logs-mcp-client    # MCP Client only
-make logs-web           # Web frontend (nginx)
-make logs-postgres      # PostgreSQL
-make logs-mongo         # MongoDB
+make logs                   # All services (interleaved, tailed)
+make logs-mcp-server        # MCP Server only
+make logs-helpdesk-server   # Helpdesk Server only
+make logs-mcp-client        # MCP Client only
+make logs-chat-client       # Chat Client (nginx)
+make logs-mongo             # MongoDB
+make logs-tunnel            # SSH tunnel (local dev only)
 ```
 
 ### Observability stack logs
@@ -337,7 +438,8 @@ make ps
 # Health endpoints
 curl http://localhost:3000/health       # MCP Server
 curl http://localhost:3001/api/health   # MCP Client
-curl http://localhost:8080/             # Web UI
+curl http://localhost:3002/health       # Helpdesk Server
+curl http://localhost:8080/             # Chat Client
 ```
 
 ### Trace a request end-to-end
@@ -358,9 +460,21 @@ Then search for this trace ID in:
 
 **MCP Client can't connect to MCP Server:**
 ```bash
-# Check if MCP Server is healthy
 docker compose ps mcp-server
 docker compose logs mcp-server --tail 50
+```
+
+**Helpdesk Server not responding:**
+```bash
+docker compose ps helpdesk-server
+docker compose logs helpdesk-server --tail 50
+# Check that BEDROCK_KB_ID and AWS credentials are set in .env
+```
+
+**SSH tunnel failing (local dev):**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml logs ssh-tunnel --tail 50
+# Ensure ~/.ssh has valid keys for the bastion host
 ```
 
 **Authentication failures (403):**
@@ -378,14 +492,15 @@ docker compose logs mcp-client --tail 50 | grep -i error
 
 **Database connection issues:**
 ```bash
-# Verify Postgres is running and healthy
-docker compose ps postgres
-docker compose exec postgres pg_isready -U lohono_api
+# For local dev — check the SSH tunnel
+docker compose -f docker-compose.yml -f docker-compose.local.yml ps ssh-tunnel
+
+# For production — verify DB_HOST and DB_PASSWORD in .env
+docker compose logs mcp-server --tail 50 | grep -i "error\|connect"
 ```
 
 **Observability not receiving data:**
 ```bash
-# Check OTel Collector health
 curl http://localhost:13133
 make obs-logs
 ```
@@ -401,7 +516,7 @@ OTEL_LOG_LEVEL=debug             # OpenTelemetry SDK debug logs
 
 Then restart:
 ```bash
-docker compose up -d --build mcp-server mcp-client
+docker compose up -d --build mcp-server mcp-client helpdesk-server
 ```
 
 ### Database query debugging
@@ -418,44 +533,78 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 ## Project Structure
 
 ```
-├── src/
-│   ├── index-sse.ts            # MCP Server entrypoint (SSE transport)
-│   ├── index.ts                # MCP Server entrypoint (stdio transport)
-│   ├── tools.ts                # MCP tool definitions and handlers
-│   ├── acl.ts                  # Access control enforcement
-│   ├── schema-rules.ts         # Sales funnel business rules
-│   ├── query-analyzer.ts       # SQL query structural analysis
-│   ├── rule-generator.ts       # YAML rule generation from SQL
-│   ├── redash-client.ts        # Redash API integration
-│   ├── client/
-│   │   ├── index.ts            # MCP Client entrypoint
-│   │   ├── server.ts           # Express REST API routes
-│   │   ├── agent.ts            # Claude agentic loop
-│   │   ├── mcp-bridge.ts       # MCP SSE client bridge
-│   │   ├── db.ts               # MongoDB session/message storage
-│   │   └── auth.ts             # Google OAuth + staff verification
-│   └── observability/
-│       ├── tracing.ts          # OpenTelemetry SDK bootstrap
-│       ├── logger.ts           # Structured JSON logger (Winston)
-│       ├── middleware.ts       # Express request/response logging
-│       ├── spans.ts            # Custom span helpers (MCP, DB, Claude)
-│       ├── sanitize.ts         # PII masking and data sanitization
-│       └── index.ts            # Barrel export
-├── lohono-chat-client/                        # React frontend (Vite + Tailwind)
-├── config/                     # ACL and business rule YAML configs
-├── signoz/                     # SigNoz internal configs
-├── db/                         # Database backups
-├── docs/
-│   └── observability-queries.md  # SigNoz/ClickHouse query examples
-├── docker-compose.yml          # Application stack
-├── docker-compose.observability.yml  # SigNoz + OTel Collector stack
-├── otel-collector-config.yaml  # OTel Collector pipeline config
-├── Dockerfile                  # MCP Server image
-├── Dockerfile.client           # MCP Client image
-├── Dockerfile.chat-client              # Web frontend image
-├── nginx.conf                  # nginx config for web SPA
-├── Makefile                    # All operational commands
-└── .env.example                # Environment variable template
+├── lohono-mcp-server/src/          # MCP Server — database context tools
+│   ├── index-sse.ts                # SSE transport entrypoint (Express)
+│   ├── index.ts                    # Stdio transport entrypoint
+│   ├── tools.ts                    # MCP tool definitions and handlers
+│   ├── acl.ts                      # Access control enforcement
+│   ├── database-catalog.ts         # Pre-built schema catalog loader
+│   ├── schema-rules.ts             # Sales funnel business rules (YAML)
+│   ├── query-analyzer.ts           # SQL query structural analysis
+│   ├── rule-generator.ts           # YAML rule generation from SQL
+│   ├── redash-client.ts            # Redash API integration
+│   ├── sales-funnel-builder.ts     # Sales funnel SQL builders
+│   ├── time-range/                 # Natural language time expression parsing
+│   └── nlq-resolver/               # NLQ intent detection and resolution
+│
+├── lohono-helpdesk-server/src/     # Helpdesk Server — knowledge base tools
+│   ├── index-sse.ts                # SSE transport entrypoint (Express)
+│   ├── tools.ts                    # Bedrock KB tool definition + handler
+│   └── cli-query-kb.ts             # CLI utility for testing KB queries
+│
+├── lohono-mcp-client/src/          # MCP Client — Claude orchestration layer
+│   ├── index.ts                    # Entrypoint: connects MongoDB, PG, MCP servers
+│   ├── server.ts                   # Express routes (auth, sessions, chat, health)
+│   ├── agent.ts                    # Claude agentic loop (up to 20 tool rounds)
+│   ├── mcp-bridge.ts               # Multi-server SSE client with tool-level routing
+│   ├── db.ts                       # MongoDB session/message CRUD
+│   └── auth.ts                     # Google OAuth + staff verification via PG
+│
+├── lohono-chat-client/             # React SPA (separate package.json, Vite + Tailwind)
+│   └── src/
+│       ├── App.tsx                 # Root app component
+│       ├── components/             # ChatView, Sidebar, etc.
+│       ├── context/                # Auth context, theme
+│       └── pages/                  # Auth callback page
+│
+├── shared/observability/src/       # OpenTelemetry + Winston logging
+│   ├── tracing.ts                  # OTel SDK bootstrap (MUST be first import)
+│   ├── logger.ts                   # Structured JSON logger (Winston)
+│   ├── middleware.ts               # Express request/response logging
+│   ├── spans.ts                    # Custom span helpers (MCP, DB, Claude)
+│   ├── sanitize.ts                 # PII masking and data sanitization
+│   └── index.ts                    # Barrel export
+│
+├── database/                       # Static catalog data and scripts
+│   ├── schema/
+│   │   ├── database-catalog.json   # Pre-built table definitions
+│   │   ├── foreign-keys-catalog.json # Pre-built FK relationships
+│   │   ├── acl.yml                 # Tool access control config
+│   │   └── sales_funnel_rules_v2.yml # Sales funnel YAML rules
+│   └── scripts/                    # Catalog generation scripts
+│
+├── docs/                           # Extended documentation
+│   ├── AWS_SETUP.md                # AWS deployment guide
+│   ├── aws-deployment-guide.md     # Detailed AWS deployment walkthrough
+│   ├── nlp-to-sql-pipeline.md      # End-to-end NLP → SQL architecture
+│   ├── deployment-modes.md         # Local vs production deployment
+│   ├── DATABASE_CATALOG_INTEGRATION.md # Catalog system details
+│   ├── observability-queries.md    # SigNoz/ClickHouse query examples
+│   ├── redash-rule-generation-guide.md # Redash rule generation
+│   └── import-tool-usage.md        # Import tool CLI guide
+│
+├── Dockerfile                      # MCP Server image
+├── Dockerfile.client               # MCP Client image
+├── Dockerfile.helpdesk             # Helpdesk Server image
+├── Dockerfile.chat-client          # Chat Client image (nginx)
+├── Dockerfile.tunnel               # SSH tunnel image (Alpine + OpenSSH)
+├── docker-compose.yml              # Production application stack
+├── docker-compose.local.yml        # Local dev overlay (adds SSH tunnel)
+├── docker-compose.observability.yml # SigNoz + OTel Collector stack
+├── otel-collector-config.yaml      # OTel Collector pipeline config
+├── nginx.conf                      # nginx config for web SPA
+├── Makefile                        # All operational commands
+└── .env.example                    # Environment variable template
 ```
 
 ## Makefile Reference
@@ -465,114 +614,60 @@ Run `make help` to see all available commands:
 ```
   help                 Show this help
   env                  Create .env from .env.example
-  up                   Start all services in foreground
-  up-d                 Start all services in background
+  up                   Start all services in foreground (local — with SSH tunnel)
+  up-d                 Start all services in background (local — with SSH tunnel)
   down                 Stop and remove all containers
   restart              Restart all services
+  service-up           Build and start a single service (SERVICE=<name>)
+  service-down         Stop and remove a single service (SERVICE=<name>)
   build                Build all Docker images (no cache)
   ps                   Show running containers
-  postgres             Start only PostgreSQL
   mongo                Start only MongoDB
-  mcp-server           Start PostgreSQL + MCP server
-  mcp-client           Start databases + MCP server + client
-  web                  Start everything including web frontend
+  mcp-server           Start MCP server (requires external DB via .env)
+  helpdesk-server      Start helpdesk MCP server (requires AWS credentials)
+  mcp-client           Start MongoDB + MCP servers + client
+  chat-client          Start everything including chat-client frontend
   logs                 Tail logs from all services
-  logs-postgres        Tail PostgreSQL logs
   logs-mongo           Tail MongoDB logs
   logs-mcp-server      Tail MCP server logs
+  logs-helpdesk-server Tail helpdesk server logs
   logs-mcp-client      Tail MCP client logs
-  logs-web             Tail web frontend logs
-  db-backup            Dump PostgreSQL to db/<timestamp>.sql.gz
-  db-restore           Restore PostgreSQL from DUMP=db/<file>.sql.gz
+  logs-chat-client     Tail chat-client frontend logs
+  logs-tunnel          Tail SSH tunnel logs
+  db-backup            Dump external PostgreSQL to db/<timestamp>.sql.gz
+  db-restore           Restore external PostgreSQL from DUMP=db/<file>.sql.gz
   db-list              List available database backups
-  db-shell             Open a psql shell
-  mongo-shell          Open a mongosh shell
-  dev-install          Install all npm dependencies
-  dev-server           Run MCP SSE server locally
-  dev-client           Run MCP client API locally
-  dev-web              Run web frontend dev server
-  dev                  Print local dev instructions
+  db-shell             Open a psql shell to external PostgreSQL
+  mongo-shell          Open a mongosh shell in the mongo container
+  dev-install          Install all npm dependencies (root + chat-client)
+  dev-server           Run MCP SSE server locally (requires PG)
+  dev-client           Run MCP client API locally (requires PG + Mongo + MCP server)
+  dev-chat-client      Run chat-client frontend dev server (Vite, port 8080)
+  dev                  Print instructions for local dev
   deploy               Build and start all services (production)
-  deploy-all           Deploy app + observability (1-click)
-  obs-up               Start observability stack
+  deploy-all           Deploy app + observability (production)
+  obs-up               Start observability stack (SigNoz + OTel Collector)
   obs-down             Stop observability stack
   obs-logs             Tail observability stack logs
   obs-ps               Show observability stack status
   obs-clean            Stop observability stack and remove volumes
   clean                Stop containers and remove images + volumes
   clean-all            Stop everything and remove all volumes
-  prune                Remove dangling Docker resources
+  prune                Remove dangling Docker resources (system-wide)
 ```
 
-## Scaffold Prompt
+## Further Documentation
 
-Use the following prompt with an AI coding assistant to recreate this project's core client-server infrastructure from scratch:
+See the `docs/` directory for detailed guides:
 
----
-
-**Build a full-stack chat application with the following architecture:**
-
-**Tech Stack:**
-- **Client:** React + TypeScript + Vite + Tailwind CSS
-- **Server:** Node.js + Express + TypeScript
-- **Database:** MongoDB (via Mongoose) for storing users, sessions, and messages
-- **Caching:** MongoDB TTL collections for session caching (or Redis-like pattern using MongoDB)
-- **Auth:** Google OAuth with JWT tokens stored in localStorage
-- **Observability:** OpenTelemetry SDK + OTel Collector + SigNoz (ClickHouse-backed) for distributed tracing, structured logging, and metrics
-
-**Project Structure:**
-```
-project/
-├── client/          # React SPA
-│   └── src/
-│       ├── api.ts              # API client with global 401 handler
-│       ├── context/AuthContext  # Auth state + token persistence
-│       ├── components/          # Sidebar, ChatView
-│       └── pages/               # AuthCallbackPage
-├── server/          # Express API
-│   └── src/
-│       ├── routes/auth.ts       # Google OAuth + JWT
-│       ├── routes/sessions.ts   # CRUD for chat sessions
-│       ├── routes/messages.ts   # Send/receive messages
-│       ├── middleware/auth.ts   # JWT verification middleware
-│       ├── models/              # Mongoose schemas
-│       ├── cache.ts             # MongoDB-based cache layer
-│       └── observability/
-│           ├── tracing.ts       # OpenTelemetry SDK bootstrap
-│           ├── logger.ts        # Structured JSON logger (Winston)
-│           ├── middleware.ts     # Express request/response logging
-│           ├── spans.ts         # Custom span helpers
-│           └── sanitize.ts      # PII masking and data sanitization
-├── docker-compose.yml                  # Application stack
-├── docker-compose.observability.yml    # SigNoz + OTel Collector stack
-├── otel-collector-config.yaml          # OTel Collector pipeline config
-├── Dockerfile
-└── package.json     # Monorepo root
-```
-
-**Requirements:**
-
-1. **Auth Flow:** User clicks login -> redirects to Google OAuth -> callback receives token -> stored in localStorage. On refresh, restore session from localStorage without redirecting to login. Add a global 401 handler in the API client that clears the session and redirects to login only on user-initiated API calls.
-
-2. **Chat Sessions:** Users can create, list, select, and delete chat sessions. Each session has a title, timestamps, and a list of messages. Sidebar shows session history.
-
-3. **API Client:** A typed `request()` wrapper around fetch that auto-attaches the Bearer token, handles JSON parsing, and has a `skipAuthRedirect` option for background calls like token verification.
-
-4. **MongoDB Models:**
-   - `User` -- userId, email, name, picture
-   - `Session` -- sessionId, userId, title, createdAt, updatedAt
-   - `Message` -- sessionId, role (user/assistant), content, createdAt
-   - `Cache` -- key, value, expiresAt (with TTL index)
-
-5. **Docker:** Multi-stage Dockerfile that builds both client and server. docker-compose with app + MongoDB services. Separate docker-compose.observability.yml for the observability stack.
-
-6. **Dev Setup:** Vite dev server proxies `/api` to the Express backend. Single `npm run dev` starts both.
-
-7. **Observability:** Instrument the server with OpenTelemetry for distributed tracing and structured logging.
-   - Bootstrap the OTel SDK at startup (`tracing.ts`) — register a `NodeTracerProvider` with an OTLP gRPC exporter pointing at the OTel Collector.
-   - Add Express middleware that creates a span per request, attaching `http.method`, `http.route`, `http.status_code`, `user.email`, and a `X-Correlation-ID` response header with the trace ID.
-   - Use Winston for structured JSON logging. Every log line must include `trace_id`, `span_id`, `timestamp_ist`, `service`, and `level` fields so logs can be correlated with traces in SigNoz.
-   - Create custom span helpers for wrapping DB queries, external API calls, and AI model calls with timing and error attributes.
-   - Add a `sanitize.ts` module that masks PII (emails, tokens) in log output.
-   - Configure an OTel Collector (`otel-collector-config.yaml`) with an OTLP gRPC receiver on port 4317, batch processor, and OTLP exporter forwarding to SigNoz.
-   - Add a `docker-compose.observability.yml` that runs ClickHouse, SigNoz Query Service, SigNoz Frontend (UI on port 3301), and the OTel Collector. The application services send telemetry to the collector via `OTEL_EXPORTER_OTLP_ENDPOINT`.
+| Document | Description |
+|----------|-------------|
+| [NLP-to-SQL Pipeline](docs/nlp-to-sql-pipeline.md) | End-to-end architecture of the query processing pipeline |
+| [AWS Setup](docs/AWS_SETUP.md) | AWS infrastructure setup guide |
+| [AWS Deployment Guide](docs/aws-deployment-guide.md) | Step-by-step AWS deployment walkthrough |
+| [Deployment Modes](docs/deployment-modes.md) | Local vs production deployment configuration |
+| [Database Catalog Integration](docs/DATABASE_CATALOG_INTEGRATION.md) | Pre-built schema catalog system |
+| [Observability Queries](docs/observability-queries.md) | SigNoz and ClickHouse query examples |
+| [Redash Rule Generation](docs/redash-rule-generation-guide.md) | Generating YAML rules from Redash queries |
+| [Import Tool Usage](docs/import-tool-usage.md) | CLI tool for importing Redash queries |
+| [Documentation](Documentation.md) | Comprehensive technical reference |
