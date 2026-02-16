@@ -92,7 +92,7 @@ graph TD
 ```
 
 **System prompt context** tells Claude:
-- It is an expert data analyst for Lohono Stays
+- It is an expert data analyst for Isprava, Chapter and Lohono Stays
 - It has access to database tools via MCP
 - For sales funnel metrics → always use `get_sales_funnel` tool
 - Present results in clear, professional format

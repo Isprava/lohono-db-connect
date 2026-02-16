@@ -14,6 +14,9 @@
     "import-redash": "tsx lohono-mcp-server/src/cli-import-redash.ts",
     "dev:client": "tsx lohono-mcp-client/src/index.ts",
     "start:client": "node dist/lohono-mcp-client/src/index.js",
+    "dev:helpdesk": "tsx lohono-helpdesk-server/src/index-sse.ts",
+    "query-kb": "tsx lohono-helpdesk-server/src/cli-query-kb.ts",
+    "start:helpdesk": "node dist/lohono-helpdesk-server/src/index-sse.js",
     "dev:chat": "npm --prefix lohono-chat-client run dev",
     "build:chat": "npm --prefix lohono-chat-client run build",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -37,6 +40,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.990.0",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.49.0",

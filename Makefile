@@ -5,7 +5,7 @@
 COMPOSE       := docker compose
 COMPOSE_LOCAL := docker compose -f docker-compose.yml -f docker-compose.local.yml
 COMPOSE_OBS   := docker compose -f docker-compose.observability.yml
-SERVICES      := mongo mcp-server mcp-client chat-client
+SERVICES      := mongo mcp-server helpdesk-server mcp-client chat-client
 
 # Default env file
 ENV_FILE := .env
@@ -89,13 +89,17 @@ mongo: env ## Start only MongoDB
 mcp-server: env ## Start MCP server (requires external DB via .env)
 	$(COMPOSE) up -d mcp-server
 
+.PHONY: helpdesk-server
+helpdesk-server: env ## Start helpdesk MCP server (requires AWS credentials)
+	$(COMPOSE) up -d helpdesk-server
+
 .PHONY: mcp-client
-mcp-client: env ## Start MongoDB + MCP server + client
-	$(COMPOSE) up -d mongo mcp-server mcp-client
+mcp-client: env ## Start MongoDB + MCP servers + client
+	$(COMPOSE) up -d mongo mcp-server helpdesk-server mcp-client
 
 .PHONY: chat-client
 chat-client: env ## Start everything including chat-client frontend
-	$(COMPOSE) up -d mongo mcp-server mcp-client chat-client
+	$(COMPOSE) up -d mongo mcp-server helpdesk-server mcp-client chat-client
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +114,10 @@ logs-mongo: ## Tail MongoDB logs
 .PHONY: logs-mcp-server
 logs-mcp-server: ## Tail MCP server logs
 	$(COMPOSE) logs -f mcp-server
+
+.PHONY: logs-helpdesk-server
+logs-helpdesk-server: ## Tail helpdesk server logs
+	$(COMPOSE) logs -f helpdesk-server
 
 .PHONY: logs-mcp-client
 logs-mcp-client: ## Tail MCP client logs
@@ -197,9 +205,10 @@ deploy: env ## Build and start all services (production)
 	$(COMPOSE) up -d --build --remove-orphans
 	@echo ""
 	@echo "═══ Deployment complete ═══"
-	@echo "  Web UI:       http://localhost:$${WEB_PORT:-8080}"
-	@echo "  Client API:   http://localhost:$${CLIENT_PORT:-3001}"
-	@echo "  MCP Server:   http://localhost:$${MCP_PORT:-3000}"
+	@echo "  Web UI:           http://localhost:$${WEB_PORT:-8080}"
+	@echo "  Client API:       http://localhost:$${CLIENT_PORT:-3001}"
+	@echo "  MCP Server:       http://localhost:$${MCP_PORT:-3000}"
+	@echo "  Helpdesk Server:  http://localhost:$${HELPDESK_PORT:-3002}"
 	@echo ""
 	$(COMPOSE) ps
 

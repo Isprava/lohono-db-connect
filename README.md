@@ -1,6 +1,6 @@
 # Lohono AI — Database Context MCP Platform
 
-An AI-powered data analyst for Lohono Stays. Users ask natural-language questions via a web UI, which are answered by Claude using MCP tools that query the production PostgreSQL database.
+An AI-powered data analyst for Isprava, Chapter and Lohono Stays. Users ask natural-language questions via a web UI, which are answered by Claude using MCP tools that query the production PostgreSQL database.
 
 ## Architecture
 

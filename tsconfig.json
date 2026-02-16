@@ -17,6 +17,7 @@
   "include": [
     "lohono-mcp-server/src/**/*",
     "lohono-mcp-client/src/**/*",
+    "lohono-helpdesk-server/src/**/*",
     "shared/observability/src/**/*"
   ],
   "exclude": [

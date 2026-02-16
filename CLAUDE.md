@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Lohono AI is an MCP (Model Context Protocol) platform that lets users ask natural-language questions about Lohono Stays' production data via a chat UI. Claude answers questions using MCP tools that query PostgreSQL.
+Aida AI is an MCP (Model Context Protocol) platform that lets users ask natural-language questions about Isprava's, Chapter's or  Lohono Stays' production data via a chat UI. Claude answers questions using MCP tools that query PostgreSQL.
 
 **Three-tier architecture:**
 - **MCP Server** (`:3000`) — Express SSE server exposing database tools via MCP protocol. Enforces read-only queries, ACL-based access control, and serves pre-built database catalog data.

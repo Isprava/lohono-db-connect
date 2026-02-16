@@ -1,0 +1,37 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowListFoundationModels",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:ListFoundationModels",
+                "bedrock:*"
+            ],
+            "Resource": [
+                "*",
+                "arn:aws:bedrock:ap-south-1:609401829706:knowledge-base/CGSAIOUMDR"
+            ]
+        },
+        {
+            "Sid": "AllowKBQuery",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:RetrieveAndGenerate",
+                "bedrock:Retrieve",
+                "bedrock:*"
+            ],
+            "Resource": [
+                "arn:aws:bedrock:ap-south-1:609401829706:knowledge-base/CGSAIOUMDR"
+            ]
+        },
+        {
+            "Sid": "AllowInvokeClaudeSonnet",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:*"
+            ],
+            "Resource": "arn:aws:bedrock:ap-south-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
+        }
+    ]
+}

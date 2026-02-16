@@ -3,7 +3,7 @@ import "../../shared/observability/src/tracing.js";
 
 import pg from "pg";
 import { connectDB, disconnectDB } from "./db.js";
-import { connectMCP, disconnectMCP } from "./mcp-bridge.js";
+import { connectMCP, disconnectMCP, type MCPServerConfig } from "./mcp-bridge.js";
 import { initPgPool } from "./auth.js";
 import { app } from "./server.js";
 import { logInfo, logError } from "../../shared/observability/src/index.js";
@@ -31,15 +31,31 @@ async function main() {
   // 2. Initialize PG pool for auth staff verification
   initPgPool(pgPool);
 
-  // 3. Connect to MCP server (SSE)
-  const mcpUrl = process.env.MCP_SSE_URL || "http://localhost:3000";
-  await connectMCP(mcpUrl);
+  // 3. Build MCP server configs
+  const mcpServers: MCPServerConfig[] = [
+    {
+      id: "db-context",
+      sseUrl: process.env.MCP_SSE_URL || "http://localhost:3000",
+    },
+  ];
 
-  // 4. Start Express REST API
+  const helpdeskUrl = process.env.HELPDESK_SSE_URL;
+  if (helpdeskUrl) {
+    mcpServers.push({
+      id: "helpdesk",
+      sseUrl: helpdeskUrl,
+    });
+  }
+
+  // 4. Connect to MCP servers (SSE)
+  await connectMCP(mcpServers);
+
+  // 5. Start Express REST API
   const port = parseInt(process.env.CLIENT_PORT || "3001", 10);
   app.listen(port, () => {
     logInfo(`MCP Client API running`, {
       port: String(port),
+      mcp_servers: mcpServers.map((s) => s.id).join(", "),
       endpoints: "sessions, chat, health" as unknown as string,
     });
   });

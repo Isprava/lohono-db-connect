@@ -18,39 +18,75 @@ interface MCPTool {
   };
 }
 
-// ── MCP Bridge ─────────────────────────────────────────────────────────────
+export interface MCPServerConfig {
+  id: string;
+  sseUrl: string;
+}
 
-let mcpClient: Client;
-let cachedTools: MCPTool[] = [];
+interface MCPServerConnection {
+  id: string;
+  client: Client;
+  sseUrl: string;
+  tools: MCPTool[];
+}
 
-export async function connectMCP(sseUrl: string): Promise<void> {
-  mcpClient = new Client(
-    { name: "lohono-mcp-client", version: "1.0.0" },
-    { capabilities: {} }
-  );
+// ── Multi-Server Registry ─────────────────────────────────────────────────
 
-  const transport = new SSEClientTransport(new URL(`${sseUrl}/sse`));
-  await mcpClient.connect(transport);
+const servers = new Map<string, MCPServerConnection>();
+const toolToServer = new Map<string, string>(); // tool name → server ID
 
-  // Discover and cache tools
-  const result = await mcpClient.listTools();
-  cachedTools = result.tools as MCPTool[];
-  logInfo(`MCP connected`, {
-    mcp_url: sseUrl,
-    tool_count: String(cachedTools.length),
-  });
+export async function connectMCP(configs: MCPServerConfig[]): Promise<void> {
+  for (const config of configs) {
+    try {
+      const client = new Client(
+        { name: `lohono-mcp-client-${config.id}`, version: "1.0.0" },
+        { capabilities: {} }
+      );
+
+      const transport = new SSEClientTransport(new URL(`${config.sseUrl}/sse`));
+      await client.connect(transport);
+
+      const result = await client.listTools();
+      const tools = result.tools as MCPTool[];
+
+      servers.set(config.id, { id: config.id, client, sseUrl: config.sseUrl, tools });
+
+      for (const tool of tools) {
+        toolToServer.set(tool.name, config.id);
+      }
+
+      logInfo(`MCP server connected: ${config.id}`, {
+        mcp_url: config.sseUrl,
+        tool_count: String(tools.length),
+      });
+    } catch (err) {
+      logError(
+        `Failed to connect MCP server: ${config.id}`,
+        err instanceof Error ? err : new Error(String(err)),
+        { mcp_url: config.sseUrl }
+      );
+    }
+  }
+
+  if (servers.size === 0) {
+    throw new Error("No MCP servers connected successfully");
+  }
 }
 
 /**
  * Returns MCP tool definitions formatted for the Claude Messages API.
- * Falls back to startup cache if no user email provided.
+ * Aggregates tools from all connected servers.
  */
 export function getToolsForClaude(): ClaudeTool[] {
-  return cachedTools.map(toClaudeTool);
+  const allTools: ClaudeTool[] = [];
+  for (const server of servers.values()) {
+    allTools.push(...server.tools.map(toClaudeTool));
+  }
+  return allTools;
 }
 
 /**
- * Fetch tools the user has access to from the MCP server and return
+ * Fetch tools the user has access to from all MCP servers and return
  * them formatted for the Claude Messages API. Results are cached per user.
  */
 export async function getToolsForUser(userEmail: string): Promise<ClaudeTool[]> {
@@ -59,13 +95,25 @@ export async function getToolsForUser(userEmail: string): Promise<ClaudeTool[]> 
     return cached.tools;
   }
 
-  const result = await mcpClient.listTools({
-    _meta: { user_email: userEmail },
-  } as Parameters<typeof mcpClient.listTools>[0]);
+  const allTools: ClaudeTool[] = [];
+  for (const server of servers.values()) {
+    try {
+      const result = await server.client.listTools({
+        _meta: { user_email: userEmail },
+      } as Parameters<typeof server.client.listTools>[0]);
+      allTools.push(...(result.tools as MCPTool[]).map(toClaudeTool));
+    } catch (err) {
+      logError(
+        `Failed to list tools from server: ${server.id}`,
+        err instanceof Error ? err : new Error(String(err))
+      );
+      // Fall back to cached tools for this server
+      allTools.push(...server.tools.map(toClaudeTool));
+    }
+  }
 
-  const tools = (result.tools as MCPTool[]).map(toClaudeTool);
-  userToolsCache.set(userEmail, { tools, fetchedAt: Date.now() });
-  return tools;
+  userToolsCache.set(userEmail, { tools: allTools, fetchedAt: Date.now() });
+  return allTools;
 }
 
 function toClaudeTool(t: MCPTool): ClaudeTool {
@@ -84,21 +132,34 @@ const USER_TOOLS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const userToolsCache = new Map<string, { tools: ClaudeTool[]; fetchedAt: number }>();
 
 /**
- * Invoke a tool on the MCP server and return the text result.
+ * Invoke a tool on the appropriate MCP server and return the text result.
+ * Routes to the correct server based on tool name.
  */
 export async function callTool(
   name: string,
   args: Record<string, unknown>,
   userEmail?: string
 ): Promise<string> {
+  const serverId = toolToServer.get(name);
+  if (!serverId) {
+    throw new Error(`No MCP server found for tool: ${name}`);
+  }
+
+  const server = servers.get(serverId);
+  if (!server) {
+    throw new Error(`MCP server not connected: ${serverId}`);
+  }
+
   return withMCPToolSpan(
     { toolName: name, toolArgs: args },
     async (span) => {
-      const result = await mcpClient.callTool({
+      span.setAttribute("mcp.server.id", serverId);
+
+      const result = await server.client.callTool({
         name,
         arguments: args,
         _meta: userEmail ? { user_email: userEmail } : undefined,
-      } as Parameters<typeof mcpClient.callTool>[0]);
+      } as Parameters<typeof server.client.callTool>[0]);
 
       // MCP returns content as array of { type, text } blocks
       const textParts = (result.content as { type: string; text: string }[])
@@ -113,13 +174,27 @@ export async function callTool(
 }
 
 /**
- * Refresh the cached tool list from the MCP server.
+ * Refresh the cached tool list from all MCP servers.
  */
 export async function refreshTools(): Promise<void> {
-  const result = await mcpClient.listTools();
-  cachedTools = result.tools as MCPTool[];
+  toolToServer.clear();
+  for (const server of servers.values()) {
+    const result = await server.client.listTools();
+    server.tools = result.tools as MCPTool[];
+    for (const tool of server.tools) {
+      toolToServer.set(tool.name, server.id);
+    }
+  }
 }
 
 export async function disconnectMCP(): Promise<void> {
-  if (mcpClient) await mcpClient.close();
+  for (const server of servers.values()) {
+    try {
+      await server.client.close();
+    } catch {
+      // Ignore close errors during shutdown
+    }
+  }
+  servers.clear();
+  toolToServer.clear();
 }

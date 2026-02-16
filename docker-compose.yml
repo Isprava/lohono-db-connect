@@ -55,6 +55,36 @@ services:
       retries: 5
       start_period: 30s
 
+  # ── Help Desk MCP Server (Bedrock Knowledge Base) ─────────────────────
+  helpdesk-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.helpdesk
+    container_name: lohono-helpdesk-server
+    restart: unless-stopped
+    environment:
+      BEDROCK_KB_ID: ${BEDROCK_KB_ID:-}
+      BEDROCK_MODEL_ARN: ${BEDROCK_MODEL_ARN:-}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      PORT: "3002"
+      # ── Observability ──
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_SERVICE_NAME: lohono-helpdesk-server
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: Asia/Kolkata
+    ports:
+      - "${HELPDESK_PORT:-3002}:3002"
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   # ── MCP Client (Claude-powered backend API) ────────────────────────────
   mcp-client:
     build:
@@ -69,10 +99,13 @@ services:
         condition: service_healthy
       mcp-server:
         condition: service_healthy
+      helpdesk-server:
+        condition: service_healthy
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}
       MCP_SSE_URL: http://mcp-server:3000
+      HELPDESK_SSE_URL: ${HELPDESK_SSE_URL:-http://helpdesk-server:3002}
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-mcp_client}
       CLIENT_PORT: "3001"
