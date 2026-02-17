@@ -98,6 +98,122 @@ function detectResponseTTL(userMessage: string): number {
   return allHistorical ? HISTORICAL_RESPONSE_TTL : CURRENT_RESPONSE_TTL;
 }
 
+// ── Debug mode ──────────────────────────────────────────────────────────
+
+const DEBUG_MODE = process.env.DEBUG_MODE === "true";
+
+interface DebugEntry {
+  tool: string;
+  input?: Record<string, unknown>;
+  cacheHit?: boolean;
+  sql?: string;
+  params?: unknown[];
+  ttl?: number;
+  rowCount?: number | null;
+  knowledgeBaseId?: string;
+  modelArn?: string;
+  question?: string;
+  citationSources?: string[];
+  executionMs?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Try to extract _debug info from a tool result string.
+ * Handles two formats:
+ *   1. JSON with a top-level `_debug` field (sales funnel)
+ *   2. HTML comment `<!-- DEBUG_JSON:{"_debug":{...}} -->` (helpdesk/RAG)
+ */
+function extractDebugFromResult(resultText: string, toolName: string, toolInput: Record<string, unknown>): DebugEntry | null {
+  // Format 1: JSON with _debug field
+  try {
+    const parsed = JSON.parse(resultText);
+    if (parsed._debug) {
+      return { ...parsed._debug, input: toolInput };
+    }
+  } catch {
+    // Not JSON — try format 2
+  }
+
+  // Format 2: HTML comment with DEBUG_JSON
+  const commentMatch = resultText.match(/<!-- DEBUG_JSON:(.*?) -->/);
+  if (commentMatch) {
+    try {
+      const parsed = JSON.parse(commentMatch[1]);
+      if (parsed._debug) {
+        return { ...parsed._debug, input: toolInput };
+      }
+    } catch {
+      // Malformed debug JSON
+    }
+  }
+
+  return null;
+}
+
+/** Format collected debug entries as a markdown section. */
+function formatDebugMarkdown(entries: DebugEntry[], responseCacheHit?: boolean, responseCacheKey?: string): string {
+  const lines: string[] = ["\n\n---\n\n## Debug Information\n"];
+
+  if (responseCacheHit) {
+    lines.push("### Response Cache");
+    lines.push(`- **Cache Hit:** Yes`);
+    lines.push(`- **Cache Key:** \`${responseCacheKey}\``);
+    lines.push(`- **Note:** Full response served from cache — no Claude API call made\n`);
+  }
+
+  for (const entry of entries) {
+    lines.push(`### Tool Call: ${entry.tool}\n`);
+
+    if (entry.input) {
+      const paramStr = Object.entries(entry.input)
+        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+        .join(", ");
+      lines.push(`- **Parameters:** ${paramStr}`);
+    }
+
+    lines.push(`- **Cache Hit:** ${entry.cacheHit ? "Yes" : "No"}`);
+
+    if (entry.executionMs !== undefined) {
+      lines.push(`- **Execution Time:** ${entry.executionMs}ms`);
+    }
+
+    if (entry.ttl !== undefined) {
+      const ttlLabel = entry.ttl >= 86_400 ? `${entry.ttl}s (historical — 24h)` : `${entry.ttl}s`;
+      lines.push(`- **TTL Applied:** ${ttlLabel}`);
+    }
+
+    if (entry.rowCount !== undefined && entry.rowCount !== null) {
+      lines.push(`- **Rows Returned:** ${entry.rowCount}`);
+    }
+
+    if (entry.knowledgeBaseId) {
+      lines.push(`- **Knowledge Base:** ${entry.knowledgeBaseId}`);
+    }
+    if (entry.modelArn) {
+      lines.push(`- **Model:** ${entry.modelArn}`);
+    }
+    if (entry.question) {
+      lines.push(`- **Question:** "${entry.question}"`);
+    }
+    if (entry.citationSources && entry.citationSources.length > 0) {
+      lines.push(`- **Sources:** ${entry.citationSources.join(", ")}`);
+    }
+
+    if (entry.sql) {
+      lines.push(`\n\`\`\`sql\n${entry.sql.trim()}\n\`\`\``);
+    }
+
+    if (entry.params && entry.params.length > 0) {
+      lines.push(`\n- **Query Params:** \`${JSON.stringify(entry.params)}\``);
+    }
+
+    lines.push(""); // blank line between entries
+  }
+
+  return lines.join("\n");
+}
+
 // ── Circuit breaker for Claude API ────────────────────────────────────────
 
 const claudeCircuitBreaker = new CircuitBreaker({
@@ -265,16 +381,20 @@ export async function chat(
   const cached = await responseCache.get(cacheKey);
   if (cached) {
     logInfo(`Response cache hit: ${cacheKey}`);
+    let cachedText = cached.assistantText;
+    if (DEBUG_MODE) {
+      cachedText += formatDebugMarkdown([], true, cacheKey);
+    }
     // Persist messages to MongoDB so conversation history stays intact
     await appendMessage(sessionId, { role: "user", content: userMessage });
-    await appendMessage(sessionId, { role: "assistant", content: cached.assistantText });
+    await appendMessage(sessionId, { role: "assistant", content: cachedText });
     // Auto-generate title for new sessions
     const dbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
     if (dbMsgs.length <= 2) {
       const titleSnippet = userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
       await updateSessionTitle(sessionId, titleSnippet);
     }
-    return cached;
+    return { assistantText: cachedText, toolCalls: cached.toolCalls };
   }
 
   // 1. Persist user message
@@ -285,6 +405,7 @@ export async function chat(
   let claudeMessages = dbMessagesToClaudeMessages(dbMsgs);
 
   const toolCalls: ChatResult["toolCalls"] = [];
+  const debugEntries: DebugEntry[] = [];
   let finalText = "";
 
   // 3. Agentic loop
@@ -400,6 +521,12 @@ export async function chat(
         result: resultText,
       });
 
+      // Extract debug info from tool result if DEBUG_MODE is on
+      if (DEBUG_MODE) {
+        const debugEntry = extractDebugFromResult(resultText, tu.name, tu.input as Record<string, unknown>);
+        if (debugEntry) debugEntries.push(debugEntry);
+      }
+
       // Persist tool_result
       await appendMessage(sessionId, {
         role: "tool_result",
@@ -420,6 +547,11 @@ export async function chat(
         ? userMessage.slice(0, 57) + "..."
         : userMessage;
     await updateSessionTitle(sessionId, titleSnippet);
+  }
+
+  // ── Append debug info to response if DEBUG_MODE is on ──────────────────
+  if (DEBUG_MODE && debugEntries.length > 0) {
+    finalText += formatDebugMarkdown(debugEntries);
   }
 
   // ── Cache the response for future identical questions ─────────────────
@@ -449,15 +581,19 @@ export async function* chatStream(
   const cached = await responseCache.get(cacheKey);
   if (cached) {
     logInfo(`Response cache hit (stream): ${cacheKey}`);
+    let cachedText = cached.assistantText;
+    if (DEBUG_MODE) {
+      cachedText += formatDebugMarkdown([], true, cacheKey);
+    }
     await appendMessage(sessionId, { role: "user", content: userMessage });
-    await appendMessage(sessionId, { role: "assistant", content: cached.assistantText });
+    await appendMessage(sessionId, { role: "assistant", content: cachedText });
     const dbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
     if (dbMsgs.length <= 2) {
       const titleSnippet = userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
       await updateSessionTitle(sessionId, titleSnippet);
     }
-    yield { event: "text_delta" as const, data: { text: cached.assistantText } };
-    yield { event: "done" as const, data: { assistantText: cached.assistantText } };
+    yield { event: "text_delta" as const, data: { text: cachedText } };
+    yield { event: "done" as const, data: { assistantText: cachedText } };
     return;
   }
 
@@ -469,6 +605,7 @@ export async function* chatStream(
   let claudeMessages = dbMessagesToClaudeMessages(dbMsgs);
 
   let finalText = "";
+  const debugEntries: DebugEntry[] = [];
 
   // 3. Agentic loop
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -567,6 +704,12 @@ export async function* chatStream(
         resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
       }
 
+      // Extract debug info from tool result if DEBUG_MODE is on
+      if (DEBUG_MODE) {
+        const debugEntry = extractDebugFromResult(resultText, tu.name, tu.input as Record<string, unknown>);
+        if (debugEntry) debugEntries.push(debugEntry);
+      }
+
       await appendMessage(sessionId, {
         role: "tool_result",
         content: resultText,
@@ -586,6 +729,13 @@ export async function* chatStream(
     const titleSnippet =
       userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
     await updateSessionTitle(sessionId, titleSnippet);
+  }
+
+  // ── Append debug info to response if DEBUG_MODE is on ──────────────────
+  if (DEBUG_MODE && debugEntries.length > 0) {
+    const debugMd = formatDebugMarkdown(debugEntries);
+    finalText += debugMd;
+    yield { event: "text_delta" as const, data: { text: debugMd } };
   }
 
   // ── Cache the response for future identical questions ─────────────────

@@ -48,6 +48,10 @@ function isHistoricalRange(endDate: string): boolean {
   return endParsed < startOfMonthIst;
 }
 
+// ── Debug mode ───────────────────────────────────────────────────────────────
+
+const DEBUG_MODE = process.env.DEBUG_MODE === "true";
+
 // ── Build tool description with metric names from config ────────────────────
 
 const metricDescriptions = Object.entries(funnelConfig.funnel_stages)
@@ -93,34 +97,58 @@ export const getSalesFunnelPlugin: ToolPlugin = {
     const { start_date, end_date, metric, vertical, locations } = GetSalesFunnelInputSchema.parse(args);
     const validVertical = getVerticalOrDefault(vertical);
     const metricKey = metric === "all" ? undefined : metric;
+    const startTime = Date.now();
 
     // Cache key
     const cacheKey = `funnel:${start_date}:${end_date}:${metric}:${validVertical}:${(locations || []).sort().join(",")}`;
     const cached = await queryCache.get(cacheKey);
     if (cached) {
       logger.info(`Cache hit: ${cacheKey}`);
+      const responseData: Record<string, unknown> = {
+        start_date, end_date, metric, vertical: validVertical, locations,
+        rowCount: cached.rowCount, metrics: cached.rows,
+      };
+      if (DEBUG_MODE) {
+        responseData._debug = {
+          tool: "get_sales_funnel",
+          cacheHit: true,
+          cacheKey,
+          executionMs: Date.now() - startTime,
+        };
+      }
       return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ start_date, end_date, metric, vertical: validVertical, locations, rowCount: cached.rowCount, metrics: cached.rows }, null, 2),
-        }],
+        content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }],
       };
     }
 
     // Build and execute query
     const query = buildSalesFunnelQuery(validVertical, locations, metricKey);
-    const result = await executeReadOnlyQuery(query.sql, [start_date, end_date, ...query.params]);
+    const allParams = [start_date, end_date, ...query.params];
+    const result = await executeReadOnlyQuery(query.sql, allParams);
 
     // Cache — historical date ranges get a 24h TTL, current month gets 60s
     const rows = result.rows as Record<string, unknown>[];
     const ttl = isHistoricalRange(end_date) ? HISTORICAL_TTL : CURRENT_TTL;
     await queryCache.set(cacheKey, { rows, rowCount: result.rowCount }, ttl);
 
+    const responseData: Record<string, unknown> = {
+      start_date, end_date, metric, vertical: validVertical, locations,
+      rowCount: result.rowCount, metrics: rows,
+    };
+    if (DEBUG_MODE) {
+      responseData._debug = {
+        tool: "get_sales_funnel",
+        cacheHit: false,
+        sql: query.sql,
+        params: allParams,
+        ttl,
+        rowCount: result.rowCount,
+        executionMs: Date.now() - startTime,
+      };
+    }
+
     return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({ start_date, end_date, metric, vertical: validVertical, locations, rowCount: result.rowCount, metrics: rows }, null, 2),
-      }],
+      content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }],
     };
   },
 };

@@ -25,6 +25,10 @@ const bedrockClient = new BedrockAgentRuntimeClient({
     : {}),
 });
 
+// ── Debug mode ───────────────────────────────────────────────────────────
+
+const DEBUG_MODE = process.env.DEBUG_MODE === "true";
+
 // ── Zod schema ────────────────────────────────────────────────────────────
 
 const QueryKnowledgeBaseInputSchema = z.object({
@@ -61,6 +65,7 @@ export async function handleToolCall(
   try {
     if (name === "query_knowledge_base") {
       const { question } = QueryKnowledgeBaseInputSchema.parse(args);
+      const startTime = Date.now();
 
       if (!KNOWLEDGE_BASE_ID) {
         return {
@@ -95,24 +100,40 @@ export async function handleToolCall(
 
       // Format citations if available
       const citations = response.citations || [];
+      const citationSources: string[] = [];
       let citationText = "";
       if (citations.length > 0) {
-        const sources: string[] = [];
         for (const citation of citations) {
           for (const ref of citation.retrievedReferences || []) {
             const uri = ref.location?.s3Location?.uri;
-            if (uri && !sources.includes(uri)) {
-              sources.push(uri);
+            if (uri && !citationSources.includes(uri)) {
+              citationSources.push(uri);
             }
           }
         }
-        if (sources.length > 0) {
-          citationText = "\n\nSources:\n" + sources.map((s) => `- ${s}`).join("\n");
+        if (citationSources.length > 0) {
+          citationText = "\n\nSources:\n" + citationSources.map((s) => `- ${s}`).join("\n");
         }
       }
 
+      let resultText = answerText + citationText;
+
+      if (DEBUG_MODE) {
+        const debugInfo = {
+          _debug: {
+            tool: "query_knowledge_base",
+            knowledgeBaseId: KNOWLEDGE_BASE_ID,
+            modelArn: MODEL_ARN,
+            question,
+            citationSources,
+            executionMs: Date.now() - startTime,
+          },
+        };
+        resultText += "\n\n<!-- DEBUG_JSON:" + JSON.stringify(debugInfo) + " -->";
+      }
+
       return {
-        content: [{ type: "text", text: answerText + citationText }],
+        content: [{ type: "text", text: resultText }],
       };
     }
 
