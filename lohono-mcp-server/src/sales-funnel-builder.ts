@@ -52,9 +52,13 @@ function getLocationCondition(locations?: string[], tablePrefix: string = "devel
 }
 
 // Helper query for Leads (Opportunities + Enquiries)
-export function buildLeadsQuery(vertical: Vertical, locations?: string[]): string {
+export function buildLeadsQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
   const stage = config.funnel_stages.lead;
-  const slugExclusion = getSlugExclusions();
+
+  // Params: $1 = start_date, $2 = end_date, then slug exclusions based on offset 3
+  const slugExcl = getSlugExclusions(3);
+  // source exclusion comes after slug exclusions
+  const dnbExcl = getDnBExclusion(3 + slugExcl.params.length);
 
   // Build location condition - simpler ILIKE pattern matching user's query
   let oppsLocationCondition = "";
@@ -76,10 +80,15 @@ export function buildLeadsQuery(vertical: Vertical, locations?: string[]): strin
     FROM development_opportunities
     WHERE (date(enquired_at + interval '330 minutes') BETWEEN $1 AND $2)
     ${oppsLocationCondition}
-    ${slugExclusion}
+    ${slugExcl.clause}
+    ${dnbExcl.clause}
   `;
 
   // 2. Enquiries Part - matching user's query format
+  // Note: Enquiries might not support slug exclusion or DnB exclusion same way, 
+  // but typically enquiries are cleaner. 
+  // However, earlier code only applied slug/dnb to Opps. 
+
   const enqSql = `
     SELECT COUNT(id) AS leads
     FROM enquiries
@@ -101,15 +110,14 @@ export function buildLeadsQuery(vertical: Vertical, locations?: string[]): strin
           ) leads_data
   `;
 
-  console.log('[DEBUG] buildLeadsQuery SQL:', finalQuery);
-  console.log('[DEBUG] oppsLocation condition:', oppsLocationCondition);
-  console.log('[DEBUG] enqLocation condition:', enqLocationCondition);
-
-  return finalQuery;
+  return {
+    sql: finalQuery,
+    params: [...slugExcl.params, ...dnbExcl.params]
+  };
 }
 
 // Generic builder for simple stages (Prospect, Account, Sale)
-function buildStageQuerySimple(stageName: string, stageConfig: FunnelStage, vertical: Vertical, locations?: string[]): string {
+function buildStageQuerySimple(stageName: string, stageConfig: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
   const table = stageConfig.table || "development_opportunities";
   const timestampCol = stageConfig.timestamp_column!;
 
@@ -125,45 +133,50 @@ function buildStageQuerySimple(stageName: string, stageConfig: FunnelStage, vert
     ? `AND '${vertical}' = 'isprava'`
     : `AND vertical = '${vertical}'`;
 
-  return `
+  const sql = `
           -- ${stageName}
           SELECT '${stageName}' as metric, COUNT(DISTINCT(${table}.slug))::int as count
           FROM ${table}
           WHERE ${timestampCol} >= ($1::date - INTERVAL '330 minutes')
             AND ${timestampCol} < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
             ${verticalCondition}
-            ${slugExclusion}
+            ${slugExcl.clause}
             ${conditions}
             ${locationCondition}
   `;
+
+  return {
+    sql,
+    params: slugExcl.params
+  };
 }
 
-export function buildProspectsQuery(vertical: Vertical, locations?: string[]): string {
+export function buildProspectsQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
   return buildStageQuerySimple("Prospects", config.funnel_stages.prospect, vertical, locations);
 }
 
-export function buildAccountsQuery(vertical: Vertical, locations?: string[]): string {
+export function buildAccountsQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
   return buildStageQuerySimple("Accounts", config.funnel_stages.account, vertical, locations);
 }
 
-export function buildSalesQuery(vertical: Vertical, locations?: string[]): string {
+export function buildSalesQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
   return buildStageQuerySimple("Sales", config.funnel_stages.sale, vertical, locations);
 }
 
-export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[]): string {
+export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
   // Leads
-  const leadsVal = buildLeadsQuery(vertical, locations);
+  const leads = buildLeadsQuery(vertical, locations);
 
   // Prospects
-  const prospectsVal = buildProspectsQuery(vertical, locations);
+  const prospects = buildProspectsQuery(vertical, locations);
 
   // Accounts
-  const accountsVal = buildAccountsQuery(vertical, locations);
+  const accounts = buildAccountsQuery(vertical, locations);
 
   // Sales
-  const salesVal = buildSalesQuery(vertical, locations);
+  const sales = buildSalesQuery(vertical, locations);
 
-  return `
+  const sql = `
         SELECT * FROM
         (
           ${leads.sql}
@@ -183,5 +196,14 @@ export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[]):
         END
   `;
 
+  // Leads has the superset of params (slugs + DnB). 
+  // Other queries only use slugs (subset of leads params).
+  // IMPORTANT: The order of params in the array must match the $N placeholders.
+  // Leads params: [...slugs, 'DnB'] -> $3..$N, $N+1
+  // Prospects params: [...slugs] -> $3..$N. It does NOT use $N+1.
+  // When we execute this combined query, we pass [start, end, ...slugs, 'DnB'].
+  // So $N+1 will be available for Leads part, and ignored by others.
+
   return { sql, params: leads.params };
 }
+
