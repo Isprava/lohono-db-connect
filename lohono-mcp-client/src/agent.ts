@@ -8,13 +8,95 @@ import {
 } from "./db.js";
 import { withClaudeSpan, withSpan, logInfo, logError } from "../../shared/observability/src/index.js";
 import { CircuitBreaker, CircuitOpenError } from "../../shared/circuit-breaker/src/index.js";
-import { Vertical } from "../../shared/types/verticals.js";
+import { RedisCache } from "../../shared/redis/src/index.js";
+import { Vertical, DEFAULT_VERTICAL } from "../../shared/types/verticals.js";
 import { resolveLocations } from "./location-resolver.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const MAX_TOOL_ROUNDS = 20; // safety limit to avoid infinite loops
 const MESSAGE_WINDOW_SIZE = 50; // max messages to send to Claude (controls token cost)
+
+// ── Response cache (skip Claude API for identical questions) ─────────────
+
+const HISTORICAL_RESPONSE_TTL = 86_400; // 24 hours — past data doesn't change
+const CURRENT_RESPONSE_TTL = 300;       // 5 minutes — current/ambiguous data
+
+interface CachedResponse {
+  assistantText: string;
+  toolCalls: { name: string; input: Record<string, unknown>; result: string }[];
+}
+
+const responseCache = new RedisCache<CachedResponse>("response", CURRENT_RESPONSE_TTL);
+
+/** Normalize a user question for cache key generation. */
+function normalizeQuestion(question: string): string {
+  return question.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Build a cache key from the user message and vertical. */
+function responseCacheKey(userMessage: string, vertical?: Vertical): string {
+  return `${normalizeQuestion(userMessage)}:${vertical || DEFAULT_VERTICAL}`;
+}
+
+/**
+ * Detect whether a user question refers to historical (past) dates only.
+ * If so, returns a long TTL (24h); otherwise returns a short TTL (5min).
+ *
+ * Recognizes:
+ *   - ISO dates: 2025-01-15
+ *   - Month-year: "January 2025", "Jan 2025"
+ *   - Relative: "last month", "last quarter", "last year"
+ */
+function detectResponseTTL(userMessage: string): number {
+  const msg = userMessage.toLowerCase();
+
+  // IST-aware start of current month
+  const nowUtc = new Date();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(nowUtc.getTime() + istOffsetMs);
+  const startOfMonthIst = new Date(nowIst.getFullYear(), nowIst.getMonth(), 1);
+
+  const months: Record<string, number> = {
+    january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2,
+    april: 3, apr: 3, may: 4, june: 5, jun: 5, july: 6, jul: 6,
+    august: 7, aug: 7, september: 8, sep: 8, october: 9, oct: 9,
+    november: 10, nov: 10, december: 11, dec: 11,
+  };
+
+  const detectedDates: Date[] = [];
+
+  // ISO dates: 2025-01-15 or 2025-01-31
+  for (const m of msg.matchAll(/(\d{4})-(\d{2})-(\d{2})/g)) {
+    detectedDates.push(new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3])));
+  }
+
+  // Month-year: "january 2025", "jan 2025"
+  for (const m of msg.matchAll(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})\b/g)) {
+    const monthIdx = months[m[1]];
+    const year = parseInt(m[2]);
+    // Use end of month for comparison
+    detectedDates.push(new Date(year, monthIdx + 1, 0));
+  }
+
+  // Relative terms that clearly refer to the past
+  if (/\b(last\s+month|previous\s+month)\b/.test(msg)) {
+    detectedDates.push(new Date(nowIst.getFullYear(), nowIst.getMonth() - 1, 1));
+  }
+  if (/\b(last\s+quarter|previous\s+quarter)\b/.test(msg)) {
+    detectedDates.push(new Date(nowIst.getFullYear(), nowIst.getMonth() - 3, 1));
+  }
+  if (/\b(last\s+year|previous\s+year)\b/.test(msg)) {
+    detectedDates.push(new Date(nowIst.getFullYear() - 1, 0, 1));
+  }
+
+  // No dates detected → short TTL (could be about current data)
+  if (detectedDates.length === 0) return CURRENT_RESPONSE_TTL;
+
+  // All detected dates must be before current month for historical TTL
+  const allHistorical = detectedDates.every(d => d < startOfMonthIst);
+  return allHistorical ? HISTORICAL_RESPONSE_TTL : CURRENT_RESPONSE_TTL;
+}
 
 // ── Circuit breaker for Claude API ────────────────────────────────────────
 
@@ -178,6 +260,23 @@ export async function chat(
   const client = getClient();
   const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
 
+  // ── Response cache check ──────────────────────────────────────────────
+  const cacheKey = responseCacheKey(userMessage, vertical);
+  const cached = await responseCache.get(cacheKey);
+  if (cached) {
+    logInfo(`Response cache hit: ${cacheKey}`);
+    // Persist messages to MongoDB so conversation history stays intact
+    await appendMessage(sessionId, { role: "user", content: userMessage });
+    await appendMessage(sessionId, { role: "assistant", content: cached.assistantText });
+    // Auto-generate title for new sessions
+    const dbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
+    if (dbMsgs.length <= 2) {
+      const titleSnippet = userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
+      await updateSessionTitle(sessionId, titleSnippet);
+    }
+    return cached;
+  }
+
   // 1. Persist user message
   await appendMessage(sessionId, { role: "user", content: userMessage });
 
@@ -323,7 +422,15 @@ export async function chat(
     await updateSessionTitle(sessionId, titleSnippet);
   }
 
-  return { assistantText: finalText, toolCalls };
+  // ── Cache the response for future identical questions ─────────────────
+  const result: ChatResult = { assistantText: finalText, toolCalls };
+  if (finalText) {
+    const ttl = detectResponseTTL(userMessage);
+    await responseCache.set(cacheKey, result, ttl);
+    logInfo(`Response cached (TTL ${ttl}s): ${cacheKey}`);
+  }
+
+  return result;
 }
 
 // ── Streaming chat function ───────────────────────────────────────────────
@@ -331,10 +438,28 @@ export async function chat(
 export async function* chatStream(
   sessionId: string,
   userMessage: string,
-  userEmail?: string
+  userEmail?: string,
+  vertical?: Vertical
 ): AsyncGenerator<StreamEvent> {
   const client = getClient();
   const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
+
+  // ── Response cache check ──────────────────────────────────────────────
+  const cacheKey = responseCacheKey(userMessage, vertical);
+  const cached = await responseCache.get(cacheKey);
+  if (cached) {
+    logInfo(`Response cache hit (stream): ${cacheKey}`);
+    await appendMessage(sessionId, { role: "user", content: userMessage });
+    await appendMessage(sessionId, { role: "assistant", content: cached.assistantText });
+    const dbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
+    if (dbMsgs.length <= 2) {
+      const titleSnippet = userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
+      await updateSessionTitle(sessionId, titleSnippet);
+    }
+    yield { event: "text_delta" as const, data: { text: cached.assistantText } };
+    yield { event: "done" as const, data: { assistantText: cached.assistantText } };
+    return;
+  }
 
   // 1. Persist user message
   await appendMessage(sessionId, { role: "user", content: userMessage });
@@ -461,6 +586,13 @@ export async function* chatStream(
     const titleSnippet =
       userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
     await updateSessionTitle(sessionId, titleSnippet);
+  }
+
+  // ── Cache the response for future identical questions ─────────────────
+  if (finalText) {
+    const ttl = detectResponseTTL(userMessage);
+    await responseCache.set(cacheKey, { assistantText: finalText, toolCalls: [] }, ttl);
+    logInfo(`Response cached (stream, TTL ${ttl}s): ${cacheKey}`);
   }
 
   yield { event: "done" as const, data: { assistantText: finalText } };

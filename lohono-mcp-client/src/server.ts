@@ -252,7 +252,7 @@ app.get("/api/sessions/:id/messages/stream", chatLimiter, async (req: Request, r
       aborted = true;
     });
 
-    for await (const event of chatStream(id, message, req.user!.email)) {
+    for await (const event of chatStream(id, message, req.user!.email, session.vertical)) {
       if (aborted) break;
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     }
