@@ -76,8 +76,8 @@ function MessageBubble({ msg, isLatest }: { msg: Message; isLatest: boolean }) {
 
         <div
           className={`px-5 py-3.5 rounded-2xl shadow-md transition-all ${isUser
-              ? "bg-primary text-white rounded-br-sm"
-              : "bg-white text-text rounded-tl-sm border border-secondary/20"
+            ? "bg-primary text-white rounded-br-sm"
+            : "bg-white text-text rounded-tl-sm border border-secondary/20"
             }`}
         >
           {isUser ? (

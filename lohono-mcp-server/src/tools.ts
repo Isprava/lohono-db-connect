@@ -9,6 +9,7 @@ import {
   buildAccountsQuery,
   buildSalesQuery,
 } from "./sales-funnel-builder.js";
+import { Vertical, DEFAULT_VERTICAL, getVerticalOrDefault } from "../../shared/types/verticals.js";
 
 const { Pool } = pg;
 
@@ -55,6 +56,8 @@ pool.on("error", (err) => {
 const GetSalesFunnelInputSchema = z.object({
   start_date: z.string().min(1, "Start date cannot be empty"),
   end_date: z.string().min(1, "End date cannot be empty"),
+  vertical: z.nativeEnum(Vertical).optional().default(DEFAULT_VERTICAL),
+  locations: z.array(z.string()).optional(),
 });
 
 // ── Read-only query helper ───────────────────────────────────────────
@@ -93,18 +96,38 @@ export const toolDefinitions = [
           type: "string",
           description: "End date in YYYY-MM-DD format (e.g. '2026-01-31')",
         },
+        vertical: {
+          type: "string",
+          description: "Business vertical (isprava, lohono_stays, the_chapter, solene). Defaults to 'isprava' if not specified.",
+          enum: ["isprava", "lohono_stays", "the_chapter", "solene"],
+        },
+        locations: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of locations to filter by (e.g. ['Goa', 'Alibaug']). Fuzzy matching is applied.",
+        },
       },
       required: ["start_date", "end_date"],
     },
   },
   {
     name: "get_leads",
-    description: "Get only Leads count for a date range. User asks for 'leads'? Use this tool.",
+    description: "Get only Leads count of Isprava for a date range. User asks for 'leads'? Use this tool.",
     inputSchema: {
       type: "object" as const,
       properties: {
         start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
         end_date: { type: "string", description: "End date (YYYY-MM-DD)" },
+        vertical: {
+          type: "string",
+          description: "Business vertical (isprava, lohono_stays, the_chapter, solene). Defaults to 'isprava'.",
+          enum: ["isprava", "lohono_stays", "the_chapter", "solene"],
+        },
+        locations: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of locations to filter by.",
+        },
       },
       required: ["start_date", "end_date"],
     },
@@ -117,6 +140,7 @@ export const toolDefinitions = [
       properties: {
         start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
         end_date: { type: "string", description: "End date (YYYY-MM-DD)" },
+        locations: { type: "array", items: { type: "string" }, description: "Optional list of locations." },
       },
       required: ["start_date", "end_date"],
     },
@@ -129,6 +153,7 @@ export const toolDefinitions = [
       properties: {
         start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
         end_date: { type: "string", description: "End date (YYYY-MM-DD)" },
+        locations: { type: "array", items: { type: "string" }, description: "Optional list of locations." },
       },
       required: ["start_date", "end_date"],
     },
@@ -141,6 +166,7 @@ export const toolDefinitions = [
       properties: {
         start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
         end_date: { type: "string", description: "End date (YYYY-MM-DD)" },
+        locations: { type: "array", items: { type: "string" }, description: "Optional list of locations." },
       },
       required: ["start_date", "end_date"],
     },
@@ -170,8 +196,9 @@ export async function handleToolCall(
     }
 
     if (name === "get_sales_funnel") {
-      const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
-      const sql = buildSalesFunnelQuery();
+      const { start_date, end_date, vertical, locations } = GetSalesFunnelInputSchema.parse(args);
+      const validVertical = getVerticalOrDefault(vertical);
+      const sql = buildSalesFunnelQuery(validVertical, locations);
       const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [
@@ -181,6 +208,8 @@ export async function handleToolCall(
               {
                 start_date,
                 end_date,
+                vertical: validVertical,
+                resolvedLocations: locations,
                 rowCount: result.rowCount,
                 metrics: result.rows
               },
@@ -193,8 +222,9 @@ export async function handleToolCall(
     }
 
     if (name === "get_leads") {
-      const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
-      const sql = buildLeadsQuery();
+      const { start_date, end_date, vertical, locations } = GetSalesFunnelInputSchema.parse(args);
+      const validVertical = getVerticalOrDefault(vertical);
+      const sql = buildLeadsQuery(validVertical, locations);
       const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }],
@@ -202,8 +232,9 @@ export async function handleToolCall(
     }
 
     if (name === "get_prospects") {
-      const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
-      const sql = buildProspectsQuery();
+      const { start_date, end_date, vertical, locations } = GetSalesFunnelInputSchema.parse(args);
+      const validVertical = getVerticalOrDefault(vertical);
+      const sql = buildProspectsQuery(validVertical, locations);
       const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }],
@@ -211,8 +242,9 @@ export async function handleToolCall(
     }
 
     if (name === "get_accounts") {
-      const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
-      const sql = buildAccountsQuery();
+      const { start_date, end_date, vertical, locations } = GetSalesFunnelInputSchema.parse(args);
+      const validVertical = getVerticalOrDefault(vertical);
+      const sql = buildAccountsQuery(validVertical, locations);
       const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }],
@@ -220,8 +252,9 @@ export async function handleToolCall(
     }
 
     if (name === "get_sales") {
-      const { start_date, end_date } = GetSalesFunnelInputSchema.parse(args);
-      const sql = buildSalesQuery();
+      const { start_date, end_date, vertical, locations } = GetSalesFunnelInputSchema.parse(args);
+      const validVertical = getVerticalOrDefault(vertical);
+      const sql = buildSalesQuery(validVertical, locations);
       const result = await executeReadOnlyQuery(sql, [start_date, end_date]);
       return {
         content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }],

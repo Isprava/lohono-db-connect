@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lohono-db-connect": {
+      "command": "npx",
+      "args": ["tsx", "lohono-mcp-server/src/index.ts"],
+      "cwd": "/home/aarya-desai/Projects/AILABS/lohono-db-connect"
+    }
+  }
+}

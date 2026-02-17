@@ -7,6 +7,8 @@ import {
   type Message as DbMessage,
 } from "./db.js";
 import { withClaudeSpan, withSpan, logInfo, logError } from "../../shared/observability/src/index.js";
+import { Vertical } from "../../shared/types/verticals.js";
+import { resolveLocations } from "./location-resolver.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -146,7 +148,8 @@ export interface ChatResult {
 export async function chat(
   sessionId: string,
   userMessage: string,
-  userEmail?: string
+  userEmail?: string,
+  vertical?: Vertical
 ): Promise<ChatResult> {
   const client = getClient();
   const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
@@ -228,9 +231,34 @@ export async function chat(
     for (const tu of toolUseBlocks) {
       let resultText: string;
       try {
+        // Inject vertical parameter for sales funnel tools if vertical is provided
+        const toolInput = tu.input as Record<string, unknown>;
+        const isSalesFunnelTool = [
+          'get_sales_funnel',
+          'get_leads',
+          'get_prospects',
+          'get_accounts',
+          'get_sales'
+        ].includes(tu.name);
+
+        let finalInput = { ...toolInput };
+
+        // 1. Resolve locations if present (Client-Side Resolution)
+        if (finalInput.locations && Array.isArray(finalInput.locations)) {
+          const rawLocations = finalInput.locations as string[];
+          const canonicalLocations = resolveLocations(rawLocations);
+          finalInput.locations = canonicalLocations;
+          logInfo(`Resolved locations: ${JSON.stringify(rawLocations)} -> ${JSON.stringify(canonicalLocations)}`);
+        }
+
+        // 2. Inject vertical if needed
+        if (vertical && isSalesFunnelTool) {
+          finalInput = { ...finalInput, vertical };
+        }
+
         resultText = await callTool(
           tu.name,
-          tu.input as Record<string, unknown>,
+          finalInput,
           userEmail
         );
       } catch (err) {
