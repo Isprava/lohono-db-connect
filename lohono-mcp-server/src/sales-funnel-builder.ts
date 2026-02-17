@@ -10,10 +10,16 @@ export interface ParameterizedQuery {
   params: unknown[];
 }
 
+/** Expose config for the plugin to read metric keys / metadata */
+export function getFunnelConfig(): SalesFunnelConfig {
+  return config;
+}
+
+// ── Exclusion helpers ────────────────────────────────────────────────────────
+
 /**
  * Build a parameterized slug exclusion clause.
  * Returns { clause, params } where clause is e.g. "AND slug NOT IN ($3, $4, $5)"
- * and params are the slug values.
  */
 function getSlugExclusions(paramOffset: number): { clause: string; params: string[] } {
   const values = config.core_rules.slug_exclusions.values || [];
@@ -25,9 +31,7 @@ function getSlugExclusions(paramOffset: number): { clause: string; params: strin
   };
 }
 
-/**
- * Build a parameterized DnB source exclusion clause (for leads only).
- */
+/** Build a parameterized DnB source exclusion clause (for leads only). */
 function getDnBExclusion(paramOffset: number): { clause: string; params: string[] } {
   return {
     clause: `AND development_opportunities.source != $${paramOffset}`,
@@ -35,73 +39,52 @@ function getDnBExclusion(paramOffset: number): { clause: string; params: string[
   };
 }
 
-// Helper query for location filtering
+/** Location ILIKE filter for a given table/column */
 function getLocationCondition(locations?: string[], tablePrefix: string = "development_opportunities", column: string = "interested_location"): string {
   if (!locations || locations.length === 0) return "";
-
-  // Generate OR conditions for location matching
-  // Only search the specified column (interested_location) to avoid false matches
-  // e.g., avoid matching "Mumbai" in source_city when interested_location is "Goa"
-  const conditions: string[] = [];
-
-  for (const loc of locations) {
-    conditions.push(`${tablePrefix}.${column} ILIKE '%${loc}%'`);
-  }
-
+  const conditions = locations.map(loc => `${tablePrefix}.${column} ILIKE '%${loc}%'`);
   return `AND (${conditions.join(" OR ")})`;
 }
 
-// Helper query for Leads (Opportunities + Enquiries)
-export function buildLeadsQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const stage = config.funnel_stages.lead;
+// ── Stage type builders ──────────────────────────────────────────────────────
 
-  // Params: $1 = start_date, $2 = end_date, then slug exclusions based on offset 3
+/**
+ * Build SQL for a multi_source stage (e.g. Leads = opportunities UNION enquiries).
+ * Reads source_1_opportunities + source_2_enquiries from the stage config.
+ */
+function buildMultiSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
   const slugExcl = getSlugExclusions(3);
-  // source exclusion comes after slug exclusions
   const dnbExcl = getDnBExclusion(3 + slugExcl.params.length);
 
-  // Build location condition - simpler ILIKE pattern matching user's query
-  let oppsLocationCondition = "";
-  let enqLocationCondition = "";
+  // Source 1: development_opportunities
+  const src1 = stage.source_1_opportunities!;
+  const oppsLocationCondition = getLocationCondition(locations, src1.table, "interested_location");
 
-  if (locations && locations.length > 0) {
-    // For development_opportunities, search interested_location
-    const oppsLocConditions = locations.map(loc => `development_opportunities.interested_location ILIKE '%${loc}%'`).join(" OR ");
-    oppsLocationCondition = `AND (${oppsLocConditions})`;
-
-    // For enquiries, search location
-    const enqLocConditions = locations.map(loc => `location ILIKE '%${loc}%'`).join(" OR ");
-    enqLocationCondition = `AND (${enqLocConditions})`;
-  }
-
-  // 1. Opportunities Part - matching user's query format
   const oppsSql = `
-    SELECT COUNT(DISTINCT(development_opportunities.slug)) AS leads
-    FROM development_opportunities
-    WHERE (date(enquired_at + interval '330 minutes') BETWEEN $1 AND $2)
+    SELECT ${src1.count_expression} AS leads
+    FROM ${src1.table}
+    WHERE (date(${src1.timestamp_column} + interval '330 minutes') BETWEEN $1 AND $2)
     ${oppsLocationCondition}
     ${slugExcl.clause}
     ${dnbExcl.clause}
   `;
 
-  // 2. Enquiries Part - matching user's query format
-  // Note: Enquiries might not support slug exclusion or DnB exclusion same way, 
-  // but typically enquiries are cleaner. 
-  // However, earlier code only applied slug/dnb to Opps. 
+  // Source 2: enquiries
+  const src2 = stage.source_2_enquiries!;
+  const enqLocationCondition = getLocationCondition(locations, src2.table, "location");
+  const enqConditions = (src2.mandatory_conditions || []).map(c => `AND ${c}`).join("\n    ");
 
   const enqSql = `
-    SELECT COUNT(id) AS leads
-    FROM enquiries
-    WHERE enquiries.vertical = 'development'
-    AND enquiry_type = 'enquiry'
-    AND leadable_id IS NULL
+    SELECT ${src2.count_expression} AS leads
+    FROM ${src2.table}
+    WHERE (date(${src2.table}.${src2.timestamp_column} + interval '5 hours 30 minutes') BETWEEN $1 AND $2)
+    ${enqConditions}
     ${enqLocationCondition}
-    AND (date(enquiries.created_at + interval '5 hours 30 minutes') BETWEEN $1 AND $2)
   `;
 
-  const finalQuery = `
-          -- Leads
-          SELECT 'Leads' as metric, SUM(leads)::int as count
+  const sql = `
+          -- ${stage.metric_name}
+          SELECT '${stage.metric_name}' as metric, SUM(leads)::int as count
           FROM
           (
             ${oppsSql}
@@ -110,32 +93,29 @@ export function buildLeadsQuery(vertical: Vertical, locations?: string[]): Param
           ) leads_data
   `;
 
-  return {
-    sql: finalQuery,
-    params: [...slugExcl.params, ...dnbExcl.params]
-  };
+  return { sql, params: [...slugExcl.params, ...dnbExcl.params] };
 }
 
-// Generic builder for simple stages (Prospect, Account, Sale)
-function buildStageQuerySimple(stageName: string, stageConfig: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const table = stageConfig.table || "development_opportunities";
-  const timestampCol = stageConfig.timestamp_column!;
+/**
+ * Build SQL for a single_source stage (e.g. Prospects, Accounts, Sales).
+ * Reads table, timestamp_column, mandatory_conditions from stage config.
+ */
+function buildSingleSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
+  const table = stage.table || "development_opportunities";
+  const timestampCol = stage.timestamp_column!;
 
-  // Params: $1 = start_date, $2 = end_date, then slug exclusions starting at $3
   const slugExcl = getSlugExclusions(3);
+  const conditions = (stage.mandatory_conditions || []).map(c => `AND ${c}`).join("\n            ");
+  const locationCondition = getLocationCondition(locations, table, "interested_location");
 
-  const conditions = (stageConfig.mandatory_conditions || []).map(c => `AND ${c}`).join("\n      ");
-
-  const locationCondition = getLocationCondition(locations, table, "interested_location");  // Only search interested_location
-
-  // Fix for development_opportunities having no vertical column
-  const verticalCondition = table === 'development_opportunities'
+  // development_opportunities has no vertical column — gate on isprava only
+  const verticalCondition = table === "development_opportunities"
     ? `AND '${vertical}' = 'isprava'`
     : `AND vertical = '${vertical}'`;
 
   const sql = `
-          -- ${stageName}
-          SELECT '${stageName}' as metric, COUNT(DISTINCT(${table}.slug))::int as count
+          -- ${stage.metric_name}
+          SELECT '${stage.metric_name}' as metric, ${stage.count_expression}::int as count
           FROM ${table}
           WHERE ${timestampCol} >= ($1::date - INTERVAL '330 minutes')
             AND ${timestampCol} < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
@@ -145,65 +125,114 @@ function buildStageQuerySimple(stageName: string, stageConfig: FunnelStage, vert
             ${locationCondition}
   `;
 
-  return {
-    sql,
-    params: slugExcl.params
-  };
+  return { sql, params: slugExcl.params };
 }
 
-export function buildProspectsQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  return buildStageQuerySimple("Prospects", config.funnel_stages.prospect, vertical, locations);
+/**
+ * Build SQL for a join_source stage (e.g. Meetings, Viewings).
+ * Reads tables[], join_conditions[], timestamp_column, timestamp_table from config.
+ */
+function buildJoinSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
+  const tables = stage.tables || [];
+  const joins = stage.join_conditions || [];
+  const timestampCol = stage.timestamp_column!;
+  const timestampTable = stage.timestamp_table || tables[0];
+
+  const slugExcl = stage.mandatory_exclusions.includes("slug_exclusions")
+    ? getSlugExclusions(3)
+    : { clause: "", params: [] as string[] };
+
+  const conditions = (stage.mandatory_conditions || []).map(c => `AND ${c}`).join("\n            ");
+  const locationCondition = getLocationCondition(locations, "development_opportunities", "interested_location");
+
+  // Build FROM + JOINs: first table is the base, rest are INNER JOINs
+  const [baseTable, ...joinTables] = tables;
+  const joinClauses = joinTables.map(t => {
+    const matchingCondition = joins.find(j => j.includes(t));
+    return matchingCondition ? `INNER JOIN ${t} ON ${matchingCondition}` : `INNER JOIN ${t}`;
+  }).join("\n          ");
+
+  const sql = `
+          -- ${stage.metric_name}
+          SELECT '${stage.metric_name}' as metric, ${stage.count_expression}::int as count
+          FROM ${baseTable}
+          ${joinClauses}
+          WHERE ${timestampTable}.${timestampCol} >= ($1::date - INTERVAL '330 minutes')
+            AND ${timestampTable}.${timestampCol} < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
+            ${slugExcl.clause}
+            ${conditions}
+            ${locationCondition}
+  `;
+
+  return { sql, params: slugExcl.params };
 }
 
-export function buildAccountsQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  return buildStageQuerySimple("Accounts", config.funnel_stages.account, vertical, locations);
+// ── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Build a query for a single metric by its config key.
+ * Dispatches to the correct builder based on stage.type.
+ */
+export function buildMetricQuery(stageKey: string, vertical: Vertical, locations?: string[]): ParameterizedQuery {
+  const stage = config.funnel_stages[stageKey];
+  if (!stage) {
+    throw new Error(`Unknown funnel metric: ${stageKey}`);
+  }
+
+  switch (stage.type) {
+    case "multi_source":
+      return buildMultiSourceQuery(stage, vertical, locations);
+    case "single_source":
+      return buildSingleSourceQuery(stage, vertical, locations);
+    case "join_source":
+      return buildJoinSourceQuery(stage, vertical, locations);
+    default:
+      throw new Error(`Unknown stage type "${stage.type}" for metric "${stageKey}"`);
+  }
 }
 
-export function buildSalesQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  return buildStageQuerySimple("Sales", config.funnel_stages.sale, vertical, locations);
-}
+/**
+ * Build the combined funnel query.
+ * If metricKey is provided, returns only that metric.
+ * If omitted, returns all metrics UNIONed and ordered by sort_order.
+ */
+export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[], metricKey?: string): ParameterizedQuery {
+  // Single metric mode
+  if (metricKey) {
+    return buildMetricQuery(metricKey, vertical, locations);
+  }
 
-export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  // Leads
-  const leads = buildLeadsQuery(vertical, locations);
+  // All metrics mode — sort by sort_order, UNION ALL
+  const stages = Object.entries(config.funnel_stages)
+    .sort(([, a], [, b]) => a.sort_order - b.sort_order);
 
-  // Prospects
-  const prospects = buildProspectsQuery(vertical, locations);
+  const metricQueries = stages.map(([key]) => buildMetricQuery(key, vertical, locations));
 
-  // Accounts
-  const accounts = buildAccountsQuery(vertical, locations);
+  const unionSql = metricQueries.map(q => q.sql).join("\n          UNION ALL\n");
 
-  // Sales
-  const sales = buildSalesQuery(vertical, locations);
+  // Build ORDER BY from sort_order
+  const orderCases = stages
+    .map(([, stage]) => `WHEN metric = '${stage.metric_name}' THEN ${stage.sort_order}`)
+    .join("\n          ");
 
   const sql = `
         SELECT * FROM
         (
-          ${leads.sql}
-          UNION ALL
-          ${prospects.sql}
-          UNION ALL
-          ${accounts.sql}
-          UNION ALL
-          ${sales.sql}
+          ${unionSql}
         ) query
         ORDER BY CASE
-          WHEN metric = 'Leads' THEN 1
-          WHEN metric = 'Prospects' THEN 2
-          WHEN metric = 'Accounts' THEN 3
-          WHEN metric = 'Sales' THEN 4
-          ELSE 5
+          ${orderCases}
+          ELSE 999
         END
   `;
 
-  // Leads has the superset of params (slugs + DnB). 
-  // Other queries only use slugs (subset of leads params).
-  // IMPORTANT: The order of params in the array must match the $N placeholders.
-  // Leads params: [...slugs, 'DnB'] -> $3..$N, $N+1
-  // Prospects params: [...slugs] -> $3..$N. It does NOT use $N+1.
-  // When we execute this combined query, we pass [start, end, ...slugs, 'DnB'].
-  // So $N+1 will be available for Leads part, and ignored by others.
+  // Collect the superset of all params. The multi_source (leads) query has the
+  // most params (slugs + DnB), others are a subset. Since all sub-queries share
+  // the same $N numbering starting at $3, we use the longest params array.
+  const supersetParams = metricQueries.reduce<unknown[]>(
+    (longest, q) => q.params.length > longest.length ? q.params : longest,
+    []
+  );
 
-  return { sql, params: leads.params };
+  return { sql, params: supersetParams };
 }
-

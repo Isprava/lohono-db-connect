@@ -65,20 +65,28 @@ export interface DateFilter {
 }
 
 export interface FunnelStages {
-    lead: FunnelStage;
-    prospect: FunnelStage;
-    account: FunnelStage;
-    sale: FunnelStage;
+    [key: string]: FunnelStage;
 }
 
+export type FunnelStageType = "single_source" | "multi_source" | "join_source";
+
 export interface FunnelStage {
+    metric_name: string;
+    sort_order: number;
+    type: FunnelStageType;
     description: string;
     timestamp_columns?: Record<string, string>;
     timestamp_column?: string;
     table?: string;
+    // multi_source fields
     source_1_opportunities?: SourceConfig;
     source_2_enquiries?: SourceConfig;
     combination_logic?: string;
+    // join_source fields
+    tables?: string[];
+    join_conditions?: string[];
+    timestamp_table?: string;
+    // common fields
     count_expression: string;
     mandatory_conditions: string[];
     mandatory_exclusions: string[];

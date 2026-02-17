@@ -144,11 +144,14 @@ date_filters:
 funnel_stages:
   
   lead:
+    metric_name: "Leads"
+    sort_order: 1
+    type: "multi_source"
     description: "Initial contact/enquiry"
     timestamp_columns:
       development_opportunities: "enquired_at"
       enquiries: "created_at"
-    
+
     source_1_opportunities:
       table: "development_opportunities"
       timestamp_column: "enquired_at"
@@ -161,7 +164,7 @@ funnel_stages:
       applies_timezone: true
       applies_date_filter: true
       applies_progressive_filter: true
-      
+
     source_2_enquiries:
       table: "enquiries"
       timestamp_column: "created_at"
@@ -175,10 +178,13 @@ funnel_stages:
       applies_date_filter: true
       applies_progressive_filter: true
       note: "No slug exclusions or source exclusions for enquiries"
-      
+
     combination_logic: "opportunities_count + enquiries_count"
-    
+
   prospect:
+    metric_name: "Prospects"
+    sort_order: 2
+    type: "single_source"
     description: "Qualified lead, moved to prospect stage"
     timestamp_column: "lead_completed_at"
     table: "development_opportunities"
@@ -191,8 +197,11 @@ funnel_stages:
     applies_timezone: true
     applies_date_filter: true
     applies_progressive_filter: true
-    
+
   account:
+    metric_name: "Accounts"
+    sort_order: 3
+    type: "single_source"
     description: "Prospect converted to account"
     timestamp_column: "prospect_completed_at"
     table: "development_opportunities"
@@ -205,8 +214,11 @@ funnel_stages:
     applies_timezone: true
     applies_date_filter: true
     applies_progressive_filter: true
-    
+
   sale:
+    metric_name: "Sales"
+    sort_order: 4
+    type: "single_source"
     description: "Closed deal (Maal Laao)"
     timestamp_column: "maal_laao_at"
     table: "development_opportunities"
