@@ -46,11 +46,11 @@ up-d: env ## Start all services in background (local — with SSH tunnel)
 
 .PHONY: down
 down: ## Stop and remove all containers
-	$(COMPOSE) down
+	$(COMPOSE_LOCAL) down
 
 .PHONY: restart
 restart: ## Restart all services
-	$(COMPOSE) restart
+	$(COMPOSE_LOCAL) restart
 
 .PHONY: service-down
 service-down: ## Stop and remove a single service (usage: make service-down SERVICE=mcp-server)
@@ -59,8 +59,8 @@ service-down: ## Stop and remove a single service (usage: make service-down SERV
 		echo "Available services: $(SERVICES)"; \
 		exit 1; \
 	fi
-	$(COMPOSE) stop $(SERVICE)
-	$(COMPOSE) rm -f $(SERVICE)
+	$(COMPOSE_LOCAL) stop $(SERVICE)
+	$(COMPOSE_LOCAL) rm -f $(SERVICE)
 
 .PHONY: service-up
 service-up: env ## Build and start a single service (usage: make service-up SERVICE=mcp-server)
@@ -69,7 +69,7 @@ service-up: env ## Build and start a single service (usage: make service-up SERV
 		echo "Available services: $(SERVICES)"; \
 		exit 1; \
 	fi
-	$(COMPOSE) up -d --build $(SERVICE)
+	$(COMPOSE_LOCAL) up -d --build $(SERVICE)
 
 .PHONY: build
 build: ## Build all Docker images (no cache)
@@ -87,7 +87,7 @@ mongo: env ## Start only MongoDB
 
 .PHONY: mcp-server
 mcp-server: env ## Start MCP server (requires external DB via .env)
-	$(COMPOSE) up -d mcp-server
+	$(COMPOSE_LOCAL) up -d mcp-server
 
 .PHONY: helpdesk-server
 helpdesk-server: env ## Start helpdesk MCP server (requires AWS credentials)
@@ -95,11 +95,11 @@ helpdesk-server: env ## Start helpdesk MCP server (requires AWS credentials)
 
 .PHONY: mcp-client
 mcp-client: env ## Start MongoDB + MCP servers + client
-	$(COMPOSE) up -d mongo mcp-server helpdesk-server mcp-client
+	$(COMPOSE_LOCAL) up -d mongo mcp-server helpdesk-server mcp-client
 
 .PHONY: chat-client
 chat-client: env ## Start everything including chat-client frontend
-	$(COMPOSE) up -d mongo mcp-server helpdesk-server mcp-client chat-client
+	$(COMPOSE_LOCAL) up -d mongo mcp-server helpdesk-server mcp-client chat-client
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 

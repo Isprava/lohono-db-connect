@@ -1,6 +1,7 @@
 import { MongoClient, Db, Collection, ObjectId } from "mongodb";
 import { v4 as uuidv4 } from "uuid";
 import { initAuthSessionsCollection, type AuthSession } from "./auth.js";
+import { Vertical, DEFAULT_VERTICAL } from "../../shared/types/verticals.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -8,6 +9,7 @@ export interface Session {
   sessionId: string;
   userId: string;
   title: string;
+  vertical: Vertical;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,12 +70,14 @@ export async function disconnectDB(): Promise<void> {
 
 export async function createSession(
   userId: string,
-  title?: string
+  title?: string,
+  vertical?: Vertical
 ): Promise<Session> {
   const session: Session = {
     sessionId: uuidv4(),
     userId,
     title: title || "New conversation",
+    vertical: vertical || DEFAULT_VERTICAL,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

@@ -22,6 +22,7 @@ import {
   logInfo,
   logError,
 } from "../../shared/observability/src/index.js";
+import { Vertical, isValidVertical } from "../../shared/types/verticals.js";
 
 // ── Extend Express Request ─────────────────────────────────────────────────
 
@@ -146,8 +147,10 @@ app.post("/api/auth/logout", async (req: Request, res: Response) => {
 
 app.post("/api/sessions", async (req: Request, res: Response) => {
   try {
-    const { title } = req.body ?? {};
-    const session = await createSession(req.user!.userId, title);
+    const { title, vertical } = req.body ?? {};
+    // Validate vertical if provided
+    const validVertical = vertical && isValidVertical(vertical) ? vertical as Vertical : undefined;
+    const session = await createSession(req.user!.userId, title, validVertical);
     res.status(201).json(session);
   } catch (err) {
     logError("POST /api/sessions failed", err instanceof Error ? err : new Error(String(err)));
@@ -208,7 +211,8 @@ app.post("/api/sessions/:id/messages", chatLimiter, async (req: Request, res: Re
       return;
     }
 
-    const result = await chat(id, message, req.user!.email);
+    // Pass vertical from session to chat function
+    const result = await chat(id, message, req.user!.email, session.vertical);
     res.json(result);
   } catch (err) {
     logError("POST /api/sessions/:id/messages failed", err instanceof Error ? err : new Error(String(err)), { sessionId: req.params.id });
