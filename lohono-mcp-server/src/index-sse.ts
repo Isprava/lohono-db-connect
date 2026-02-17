@@ -10,6 +10,7 @@ import {
 import express from "express";
 import cors from "cors";
 import { toolDefinitions, handleToolCall, pool } from "./tools.js";
+import { getDbCircuitState } from "./db/pool.js";
 import { resolveUserEmail, filterToolsByAccess, loadAclConfig } from "./acl.js";
 import {
   requestLoggingMiddleware,
@@ -118,9 +119,10 @@ app.post("/messages", async (req, res) => {
 app.get("/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ status: "ok", server: "lohono-db-context", db: "connected" });
-  } catch {
-    res.status(503).json({ status: "error", server: "lohono-db-context", db: "disconnected" });
+    res.json({ status: "ok", server: "lohono-db-context", db: "connected", circuits: { postgresql: getDbCircuitState() } });
+  } catch (err) {
+    logError("Health check: DB unreachable", err instanceof Error ? err : new Error(String(err)));
+    res.status(503).json({ status: "error", server: "lohono-db-context", db: "disconnected", circuits: { postgresql: getDbCircuitState() } });
   }
 });
 

@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import {
   createSession,
   getSession,
@@ -7,7 +8,8 @@ import {
   deleteSession,
   getMessages,
 } from "./db.js";
-import { chat } from "./agent.js";
+import { chat, chatStream, getClaudeCircuitState } from "./agent.js";
+import { getMcpCircuitStates } from "./mcp-bridge.js";
 import {
   authenticateGoogleUser,
   validateSession,
@@ -38,6 +40,31 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(requestLoggingMiddleware());
+
+// ── Rate limiting ───────────────────────────────────────────────────────────
+
+/** General API rate limit: 60 requests per minute per user/IP */
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.user?.email || req.ip || "anonymous",
+  skip: (req: Request) => req.path === "/api/health",
+  message: { error: "Too many requests, please try again later" },
+});
+
+/** Chat endpoint rate limit: 20 requests per minute (expensive — Claude API calls) */
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.user?.email || req.ip || "anonymous",
+  message: { error: "Too many chat requests, please wait before sending another message" },
+});
+
+app.use("/api/", generalLimiter);
 
 // ── Auth middleware ─────────────────────────────────────────────────────────
 
@@ -96,7 +123,8 @@ app.get("/api/auth/me", async (req: Request, res: Response) => {
       return;
     }
     res.json(req.user);
-  } catch {
+  } catch (err) {
+    logError("GET /api/auth/me failed", err instanceof Error ? err : new Error(String(err)));
     res.status(500).json({ error: "Failed to get profile" });
   }
 });
@@ -108,7 +136,8 @@ app.post("/api/auth/logout", async (req: Request, res: Response) => {
       await deleteSessionByToken(authHeader.slice(7));
     }
     res.json({ ok: true });
-  } catch {
+  } catch (err) {
+    logError("POST /api/auth/logout failed", err instanceof Error ? err : new Error(String(err)));
     res.status(500).json({ error: "Failed to logout" });
   }
 });
@@ -121,7 +150,7 @@ app.post("/api/sessions", async (req: Request, res: Response) => {
     const session = await createSession(req.user!.userId, title);
     res.status(201).json(session);
   } catch (err) {
-    console.error("POST /api/sessions error:", err);
+    logError("POST /api/sessions failed", err instanceof Error ? err : new Error(String(err)));
     res.status(500).json({ error: "Failed to create session" });
   }
 });
@@ -131,7 +160,7 @@ app.get("/api/sessions", async (req: Request, res: Response) => {
     const sessions = await listSessions(req.user!.userId);
     res.json(sessions);
   } catch (err) {
-    console.error("GET /api/sessions error:", err);
+    logError("GET /api/sessions failed", err instanceof Error ? err : new Error(String(err)));
     res.status(500).json({ error: "Failed to list sessions" });
   }
 });
@@ -147,7 +176,7 @@ app.get("/api/sessions/:id", async (req: Request, res: Response) => {
     const messages = await getMessages(id);
     res.json({ ...session, messages });
   } catch (err) {
-    console.error("GET /api/sessions/:id error:", err);
+    logError("GET /api/sessions/:id failed", err instanceof Error ? err : new Error(String(err)), { sessionId: req.params.id });
     res.status(500).json({ error: "Failed to get session" });
   }
 });
@@ -157,14 +186,14 @@ app.delete("/api/sessions/:id", async (req: Request, res: Response) => {
     await deleteSession(req.params.id as string, req.user!.userId);
     res.json({ ok: true });
   } catch (err) {
-    console.error("DELETE /api/sessions/:id error:", err);
+    logError("DELETE /api/sessions/:id failed", err instanceof Error ? err : new Error(String(err)), { sessionId: req.params.id });
     res.status(500).json({ error: "Failed to delete session" });
   }
 });
 
 // ── Chat ─────────────────────────────────────────────────────────────────
 
-app.post("/api/sessions/:id/messages", async (req: Request, res: Response) => {
+app.post("/api/sessions/:id/messages", chatLimiter, async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
     const { message } = req.body ?? {};
@@ -182,10 +211,60 @@ app.post("/api/sessions/:id/messages", async (req: Request, res: Response) => {
     const result = await chat(id, message, req.user!.email);
     res.json(result);
   } catch (err) {
-    console.error("POST /api/sessions/:id/messages error:", err);
+    logError("POST /api/sessions/:id/messages failed", err instanceof Error ? err : new Error(String(err)), { sessionId: req.params.id });
     const errorMessage =
       err instanceof Error ? err.message : "Failed to process message";
     res.status(500).json({ error: errorMessage });
+  }
+});
+
+// ── Streaming Chat (SSE) ──────────────────────────────────────────────────
+
+app.get("/api/sessions/:id/messages/stream", chatLimiter, async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const message = req.query.message as string | undefined;
+    if (!message || typeof message !== "string") {
+      res.status(400).json({ error: '"message" query parameter (string) is required' });
+      return;
+    }
+
+    const session = await getSession(id, req.user!.userId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    // Set SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // disable nginx buffering
+    res.flushHeaders();
+
+    // Handle client disconnect
+    let aborted = false;
+    req.on("close", () => {
+      aborted = true;
+    });
+
+    for await (const event of chatStream(id, message, req.user!.email)) {
+      if (aborted) break;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+
+    if (!aborted) {
+      res.end();
+    }
+  } catch (err) {
+    logError("GET /api/sessions/:id/messages/stream failed", err instanceof Error ? err : new Error(String(err)), { sessionId: req.params.id });
+    // If headers already sent, we can't send JSON error
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to process message" });
+    } else {
+      res.write(`data: ${JSON.stringify({ event: "error", data: { message: "Internal server error" } })}\n\n`);
+      res.end();
+    }
   }
 });
 
@@ -197,6 +276,10 @@ app.get("/api/health", async (_req: Request, res: Response) => {
     service: "mcp-client",
     model: process.env.CLAUDE_MODEL || "claude-sonnet-4-5-20250929",
     mcpServer: process.env.MCP_SSE_URL || "http://localhost:3000",
+    circuits: {
+      claude: getClaudeCircuitState(),
+      mcp: getMcpCircuitStates(),
+    },
   });
 });
 

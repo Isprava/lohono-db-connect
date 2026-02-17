@@ -15,6 +15,22 @@ services:
       retries: 5
       start_period: 10s
 
+  # ── Redis (shared cache) ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: lohono-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   # ── MCP Server (SSE mode) ──────────────────────────────────────────────
   mcp-server:
     build:
@@ -36,6 +52,7 @@ services:
       DATABASE_DIR: /app/database
       MCP_USER_EMAIL: ${MCP_USER_EMAIL:-}
       SALES_FUNNEL_RULES_PATH: /app/database/schema/sales_funnel_rules_v2.yml
+      REDIS_URL: redis://redis:6379
       PORT: "3000"
       # ── Observability ──
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
@@ -108,6 +125,7 @@ services:
       HELPDESK_SSE_URL: ${HELPDESK_SSE_URL:-http://helpdesk-server:3002}
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-mcp_client}
+      REDIS_URL: redis://redis:6379
       CLIENT_PORT: "3001"
       # PG access for staff email verification during auth
       DB_HOST: ${DB_HOST}
@@ -146,6 +164,8 @@ services:
 
 volumes:
   mongodata:
+    driver: local
+  redisdata:
     driver: local
 
 networks:

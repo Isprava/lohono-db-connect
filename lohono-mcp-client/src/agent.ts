@@ -7,10 +7,25 @@ import {
   type Message as DbMessage,
 } from "./db.js";
 import { withClaudeSpan, withSpan, logInfo, logError } from "../../shared/observability/src/index.js";
+import { CircuitBreaker, CircuitOpenError } from "../../shared/circuit-breaker/src/index.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const MAX_TOOL_ROUNDS = 20; // safety limit to avoid infinite loops
+const MESSAGE_WINDOW_SIZE = 50; // max messages to send to Claude (controls token cost)
+
+// ── Circuit breaker for Claude API ────────────────────────────────────────
+
+const claudeCircuitBreaker = new CircuitBreaker({
+  name: "claude-api",
+  failureThreshold: 3,
+  resetTimeoutMs: 60_000, // 60s — API is expensive, give it time
+});
+
+/** Get the current Claude API circuit breaker state for health checks */
+export function getClaudeCircuitState() {
+  return claudeCircuitBreaker.getState();
+}
 
 const SYSTEM_PROMPT = `You are an expert data analyst assistant for Isprava, Chapter and  Lohono Stays.
 You have access to the Lohono production database through MCP tools.
@@ -65,7 +80,7 @@ function getModel(): string {
  * Sanitize assistant text by removing XML-like technical markup that shouldn't
  * be shown to users (e.g., <function_calls>, <invoke>, <parameter>, etc.)
  */
-function sanitizeAssistantText(text: string): string {
+export function sanitizeAssistantText(text: string): string {
   // Remove common XML-like technical tags that Claude might accidentally include
   return text
     .replace(/<function_calls>.*?<\/function_calls>/gs, '')
@@ -83,7 +98,7 @@ type ContentBlock =
   | Anthropic.Messages.ToolUseBlockParam
   | Anthropic.Messages.ToolResultBlockParam;
 
-function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[] {
+export function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[] {
   const claude: ClaudeMessage[] = [];
   let currentRole: "user" | "assistant" | null = null;
   let currentContent: ContentBlock[] = [];
@@ -136,6 +151,15 @@ function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[] {
   return claude;
 }
 
+// ── SSE Stream event types ────────────────────────────────────────────────
+
+export type StreamEvent =
+  | { event: "text_delta"; data: { text: string } }
+  | { event: "tool_start"; data: { name: string; id: string } }
+  | { event: "tool_end"; data: { name: string; id: string } }
+  | { event: "done"; data: { assistantText: string } }
+  | { event: "error"; data: { message: string } };
+
 // ── Main chat function ─────────────────────────────────────────────────────
 
 export interface ChatResult {
@@ -154,8 +178,8 @@ export async function chat(
   // 1. Persist user message
   await appendMessage(sessionId, { role: "user", content: userMessage });
 
-  // 2. Load full history from DB
-  const dbMsgs = await getMessages(sessionId);
+  // 2. Load windowed history from DB (most recent N messages)
+  const dbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
   let claudeMessages = dbMessagesToClaudeMessages(dbMsgs);
 
   const toolCalls: ChatResult["toolCalls"] = [];
@@ -163,26 +187,28 @@ export async function chat(
 
   // 3. Agentic loop
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await withClaudeSpan(
-      {
-        model: getModel(),
-        sessionId,
-        round,
-        toolCount: tools.length,
-      },
-      async (span) => {
-        const resp = await client.messages.create({
+    const response = await claudeCircuitBreaker.execute(() =>
+      withClaudeSpan(
+        {
           model: getModel(),
-          max_tokens: 8192,
-          system: SYSTEM_PROMPT,
-          tools,
-          messages: claudeMessages,
-        });
-        span.setAttribute("llm.stop_reason", resp.stop_reason || "unknown");
-        span.setAttribute("llm.usage.input_tokens", resp.usage?.input_tokens || 0);
-        span.setAttribute("llm.usage.output_tokens", resp.usage?.output_tokens || 0);
-        return resp;
-      }
+          sessionId,
+          round,
+          toolCount: tools.length,
+        },
+        async (span) => {
+          const resp = await client.messages.create({
+            model: getModel(),
+            max_tokens: 8192,
+            system: SYSTEM_PROMPT,
+            tools,
+            messages: claudeMessages,
+          });
+          span.setAttribute("llm.stop_reason", resp.stop_reason || "unknown");
+          span.setAttribute("llm.usage.input_tokens", resp.usage?.input_tokens || 0);
+          span.setAttribute("llm.usage.output_tokens", resp.usage?.output_tokens || 0);
+          return resp;
+        }
+      )
     );
 
     // Collect text + tool_use blocks from response
@@ -234,6 +260,10 @@ export async function chat(
           userEmail
         );
       } catch (err) {
+        logError(`Tool call "${tu.name}" failed`, err instanceof Error ? err : new Error(String(err)), {
+          sessionId,
+          tool: tu.name,
+        });
         resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
       }
 
@@ -251,8 +281,8 @@ export async function chat(
       });
     }
 
-    // 5. Reload messages for next Claude call
-    const updatedDbMsgs = await getMessages(sessionId);
+    // 5. Reload windowed messages for next Claude call
+    const updatedDbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
     claudeMessages = dbMessagesToClaudeMessages(updatedDbMsgs);
   }
 
@@ -266,4 +296,144 @@ export async function chat(
   }
 
   return { assistantText: finalText, toolCalls };
+}
+
+// ── Streaming chat function ───────────────────────────────────────────────
+
+export async function* chatStream(
+  sessionId: string,
+  userMessage: string,
+  userEmail?: string
+): AsyncGenerator<StreamEvent> {
+  const client = getClient();
+  const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
+
+  // 1. Persist user message
+  await appendMessage(sessionId, { role: "user", content: userMessage });
+
+  // 2. Load windowed history from DB
+  const dbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
+  let claudeMessages = dbMessagesToClaudeMessages(dbMsgs);
+
+  let finalText = "";
+
+  // 3. Agentic loop
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    // Use raw streaming API (async iterable) so we can yield from the generator
+    const stream = await claudeCircuitBreaker.execute(() =>
+      client.messages.create({
+        model: getModel(),
+        max_tokens: 8192,
+        system: SYSTEM_PROMPT,
+        tools,
+        messages: claudeMessages,
+        stream: true,
+      })
+    );
+
+    const textParts: string[] = [];
+    const toolUseBlocks: { id: string; name: string; inputJson: string }[] = [];
+    let currentToolIndex = -1;
+    let stopReason: string | null = null;
+
+    for await (const event of stream) {
+      if (event.type === "content_block_start") {
+        if (event.content_block.type === "tool_use") {
+          currentToolIndex = toolUseBlocks.length;
+          toolUseBlocks.push({
+            id: event.content_block.id,
+            name: event.content_block.name,
+            inputJson: "",
+          });
+        }
+      } else if (event.type === "content_block_delta") {
+        if (event.delta.type === "text_delta") {
+          textParts.push(event.delta.text);
+          yield { event: "text_delta" as const, data: { text: event.delta.text } };
+        } else if (event.delta.type === "input_json_delta" && currentToolIndex >= 0) {
+          toolUseBlocks[currentToolIndex].inputJson += event.delta.partial_json;
+        }
+      } else if (event.type === "message_delta") {
+        stopReason = event.delta.stop_reason;
+      }
+    }
+
+    // Persist assistant text
+    const rawAssistantText = textParts.join("");
+    const assistantText = sanitizeAssistantText(rawAssistantText);
+    if (assistantText) {
+      await appendMessage(sessionId, { role: "assistant", content: assistantText });
+    }
+
+    // Parse and persist tool_use blocks
+    const parsedToolBlocks: Anthropic.Messages.ToolUseBlock[] = [];
+    for (const tu of toolUseBlocks) {
+      let input: Record<string, unknown> = {};
+      try {
+        input = tu.inputJson ? JSON.parse(tu.inputJson) : {};
+      } catch {
+        input = {};
+      }
+      parsedToolBlocks.push({
+        type: "tool_use",
+        id: tu.id,
+        name: tu.name,
+        input,
+      });
+      await appendMessage(sessionId, {
+        role: "tool_use",
+        content: "",
+        toolName: tu.name,
+        toolInput: input,
+        toolUseId: tu.id,
+      });
+    }
+
+    // If no tool calls, we're done
+    if (stopReason === "end_turn" || parsedToolBlocks.length === 0) {
+      finalText = assistantText;
+      break;
+    }
+
+    // 4. Execute tool calls
+    for (const tu of parsedToolBlocks) {
+      yield { event: "tool_start" as const, data: { name: tu.name, id: tu.id } };
+
+      let resultText: string;
+      try {
+        resultText = await callTool(
+          tu.name,
+          tu.input as Record<string, unknown>,
+          userEmail
+        );
+      } catch (err) {
+        logError(`Tool call "${tu.name}" failed`, err instanceof Error ? err : new Error(String(err)), {
+          sessionId,
+          tool: tu.name,
+        });
+        resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+
+      await appendMessage(sessionId, {
+        role: "tool_result",
+        content: resultText,
+        toolUseId: tu.id,
+      });
+
+      yield { event: "tool_end" as const, data: { name: tu.name, id: tu.id } };
+    }
+
+    // 5. Reload messages for next round
+    const updatedDbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
+    claudeMessages = dbMessagesToClaudeMessages(updatedDbMsgs);
+  }
+
+  // Auto-generate title for new sessions
+  if (dbMsgs.length <= 1) {
+    const titleSnippet =
+      userMessage.length > 60 ? userMessage.slice(0, 57) + "..." : userMessage;
+    await updateSessionTitle(sessionId, titleSnippet);
+  }
+
+  yield { event: "done" as const, data: { assistantText: finalText } };
 }

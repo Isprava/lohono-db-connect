@@ -4,6 +4,9 @@ import type pg from "pg";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+/** Session TTL: 24 hours from last access (sliding window) */
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
 export interface AuthSession {
   token: string;
   userId: string;
@@ -11,6 +14,8 @@ export interface AuthSession {
   name: string;
   picture: string;
   createdAt: Date;
+  lastAccessedAt: Date;
+  expiresAt: Date;
 }
 
 export interface UserPublic {
@@ -103,15 +108,19 @@ export async function authenticateGoogleUser(
   }
 
   // 3. Upsert auth session in MongoDB (reuse existing session if user already has one)
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
   const existing = await authSessions.findOne({ email });
   if (existing) {
-    // Update profile info but keep the same token
+    // Update profile info, keep the same token, refresh expiry
     await authSessions.updateOne(
       { email },
       {
         $set: {
           name: profile.name || existing.name,
           picture: profile.picture || existing.picture,
+          lastAccessedAt: now,
+          expiresAt,
         },
       }
     );
@@ -126,14 +135,16 @@ export async function authenticateGoogleUser(
     };
   }
 
-  // Create new session (no expiry)
+  // Create new session with 24h expiry
   const session: AuthSession = {
     token: uuidv4(),
     userId: email, // use email as userId
     email,
     name: profile.name || "",
     picture: profile.picture || "",
-    createdAt: new Date(),
+    createdAt: now,
+    lastAccessedAt: now,
+    expiresAt,
   };
 
   await authSessions.insertOne(session);
@@ -156,6 +167,15 @@ export async function validateSession(
 ): Promise<UserPublic | null> {
   const session = await authSessions.findOne({ token });
   if (!session) return null;
+
+  // Refresh sliding window expiry on each access
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
+  await authSessions.updateOne(
+    { token },
+    { $set: { lastAccessedAt: now, expiresAt } }
+  );
+
   return {
     userId: session.userId,
     email: session.email,

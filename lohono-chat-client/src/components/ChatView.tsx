@@ -7,6 +7,9 @@ import {
   type SessionWithMessages,
 } from "../api";
 
+// Sentinel to mark messages currently being streamed (skip typewriter)
+const STREAMING_MARKER = "__streaming__";
+
 // ── Typewriter Hook (block-level reveal) ─────────────────────────────
 // Reveals text one markdown block at a time (split by double newlines)
 // so that tables, lists, and other structures appear as complete units.
@@ -58,10 +61,12 @@ function MessageBubble({ msg, isLatest }: { msg: Message; isLatest: boolean }) {
   const isUser = msg.role === "user";
   const isAssistant = msg.role === "assistant";
 
+  // Skip typewriter for messages that are being streamed in real-time
+  const isStreaming = msg.toolUseId === STREAMING_MARKER;
   const { displayedText, isComplete } = useTypewriter(
     msg.content,
     15,
-    isAssistant && isLatest
+    isAssistant && isLatest && !isStreaming
   );
 
   return (
@@ -248,22 +253,98 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
 
+    // Create a streaming assistant message placeholder
+    const streamingMsg: Message = {
+      sessionId: currentSessionId,
+      role: "assistant",
+      content: "",
+      toolUseId: STREAMING_MARKER, // marks this as being streamed
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, streamingMsg]);
+
+    const sid = currentSessionId;
+
     try {
-      await sessionsApi.sendMessage(currentSessionId, text);
-      // Reload full message list to get all tool calls and final response
-      const data = await sessionsApi.get(currentSessionId);
-      setMessages(data.messages);
-    } catch (err) {
-      // Add error message
-      setMessages((prev) => [
-        ...prev,
-        {
-          sessionId: currentSessionId!,
-          role: "assistant",
-          content: `Error: ${err instanceof Error ? err.message : "Something went wrong"}`,
-          createdAt: new Date().toISOString(),
+      await sessionsApi.sendMessageStream(sid, text, {
+        onTextDelta: (delta) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              updated[updated.length - 1] = { ...last, content: last.content + delta };
+            }
+            return updated;
+          });
         },
-      ]);
+        onToolStart: (name) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              // If there was text, finalize it and add a tool indicator
+              updated[updated.length - 1] = { ...last, content: last.content + `\n\n*Querying ${name}...*` };
+            }
+            return updated;
+          });
+        },
+        onToolEnd: () => {
+          // Remove tool indicator text — next round will stream new text
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              // Strip the "Querying..." indicator
+              const cleaned = last.content.replace(/\n\n\*Querying [^*]+\.\.\.\*$/, "");
+              updated[updated.length - 1] = { ...last, content: cleaned };
+            }
+            return updated;
+          });
+        },
+        onDone: async () => {
+          // Reload full message list from DB for consistency
+          try {
+            const data = await sessionsApi.get(sid);
+            setMessages(data.messages);
+          } catch {
+            // Keep streamed messages if reload fails
+          }
+        },
+        onError: (errorMsg) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              updated[updated.length - 1] = {
+                ...last,
+                content: `Error: ${errorMsg}`,
+                toolUseId: undefined,
+              };
+            }
+            return updated;
+          });
+        },
+      });
+    } catch (err) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.toolUseId === STREAMING_MARKER) {
+          updated[updated.length - 1] = {
+            ...last,
+            content: `Error: ${err instanceof Error ? err.message : "Something went wrong"}`,
+            toolUseId: undefined,
+          };
+        } else {
+          updated.push({
+            sessionId: sid,
+            role: "assistant",
+            content: `Error: ${err instanceof Error ? err.message : "Something went wrong"}`,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        return updated;
+      });
     } finally {
       setSending(false);
     }
@@ -331,7 +412,7 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
               isLatest={i === messages.length - 1 && msg.role === "assistant"}
             />
           ))}
-          {sending && (
+          {sending && !messages.some((m) => m.toolUseId === STREAMING_MARKER && m.content) && (
             <div className="flex justify-start mb-6 animate-fade-in">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden shadow-lg bg-surface flex items-center justify-center p-1.5">

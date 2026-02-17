@@ -53,6 +53,8 @@ export async function connectDB(): Promise<Db> {
   await messages.createIndex({ sessionId: 1, createdAt: 1 });
   await authSessionsColl.createIndex({ token: 1 }, { unique: true });
   await authSessionsColl.createIndex({ email: 1 }, { unique: true });
+  // TTL index: MongoDB auto-deletes documents when expiresAt is in the past
+  await authSessionsColl.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
   console.log(`MongoDB connected: ${uri}/${dbName}`);
   return db;
@@ -81,11 +83,9 @@ export async function createSession(
 
 export async function getSession(
   sessionId: string,
-  userId?: string
+  userId: string
 ): Promise<Session | null> {
-  const filter: Record<string, string> = { sessionId };
-  if (userId) filter.userId = userId;
-  return sessions.findOne(filter);
+  return sessions.findOne({ sessionId, userId });
 }
 
 export async function listSessions(userId: string): Promise<Session[]> {
@@ -94,12 +94,10 @@ export async function listSessions(userId: string): Promise<Session[]> {
 
 export async function deleteSession(
   sessionId: string,
-  userId?: string
+  userId: string
 ): Promise<void> {
-  const filter: Record<string, string> = { sessionId };
-  if (userId) filter.userId = userId;
   await messages.deleteMany({ sessionId });
-  await sessions.deleteOne(filter);
+  await sessions.deleteOne({ sessionId, userId });
 }
 
 export async function updateSessionTitle(
@@ -132,6 +130,20 @@ export async function appendMessage(
   return message;
 }
 
-export async function getMessages(sessionId: string): Promise<Message[]> {
+/**
+ * Retrieve messages for a session, ordered by creation time.
+ * When `limit` is provided, returns only the most recent N messages
+ * (useful for windowing Claude API calls to control token usage).
+ */
+export async function getMessages(sessionId: string, limit?: number): Promise<Message[]> {
+  if (limit && limit > 0) {
+    // Fetch the most recent N messages (descending) then reverse to chronological order
+    const recent = await messages
+      .find({ sessionId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+    return recent.reverse();
+  }
   return messages.find({ sessionId }).sort({ createdAt: 1 }).toArray();
 }

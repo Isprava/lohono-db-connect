@@ -13,6 +13,8 @@ graph LR
     Helpdesk -->|API| Bedrock["AWS Bedrock<br/><i>Knowledge Base</i>"]
     Client -->|Sessions &amp; Auth| Mongo[("MongoDB<br/><i>mcp_client</i><br/>:27017")]
     Client -.->|Staff verification| PG
+    Server -->|Cache| Redis[("Redis<br/><i>Shared Cache</i><br/>:6379")]
+    Client -->|Cache| Redis
 ```
 
 ### Request Flow
@@ -30,7 +32,7 @@ sequenceDiagram
     participant M as MongoDB
 
     U->>W: Ask a question
-    W->>C: POST /api/sessions/:id/messages
+    W->>C: GET /api/sessions/:id/messages/stream (SSE)
     C->>M: Save user message
     C->>A: messages.create (with MCP tools)
 
@@ -100,12 +102,13 @@ graph LR
 
 **Services:**
 
-- **Chat Client** — React SPA served via nginx. Handles Google OAuth login and provides a chat interface.
-- **MCP Client** — Express REST API. Manages sessions (MongoDB), authenticates users (Google OAuth + staff check in Postgres), and orchestrates Claude to answer questions using MCP tools from multiple servers.
-- **MCP Server** — Express SSE server implementing the Model Context Protocol. Exposes database query tools, schema intelligence, Redash integration, and ACL enforcement.
+- **Chat Client** — React SPA served via nginx. Handles Google OAuth login and provides a streaming chat interface with real-time SSE responses.
+- **MCP Client** — Express REST API. Manages sessions (MongoDB), authenticates users (Google OAuth + staff check in Postgres), and orchestrates Claude to answer questions using MCP tools from multiple servers. Includes rate limiting, circuit breakers, and SSE streaming.
+- **MCP Server** — Express SSE server implementing the Model Context Protocol. Exposes database query tools via a modular plugin system, schema intelligence, Redash integration, and ACL enforcement. Uses Redis caching for query results and user ACLs.
 - **Helpdesk Server** — Express SSE server implementing MCP. Queries AWS Bedrock Knowledge Base for policies, SOPs, villa information, Goa DCR/building regulations, and operational documentation.
 - **PostgreSQL** — Lohono production database (`lohono_api_production`) via external RDS readonly replica.
-- **MongoDB** — Stores chat sessions, messages, and auth sessions.
+- **MongoDB** — Stores chat sessions, messages, and auth sessions (with TTL-based auto-expiry).
+- **Redis** — Shared cache layer for user ACLs, tool lists, and query results. Optional — falls back to in-memory caching if unavailable.
 
 ## Prerequisites
 
@@ -162,6 +165,13 @@ All configuration lives in `.env`. Copy from `.env.example` and fill in the requ
 |----------|----------|---------|-------------|
 | `MONGO_PORT` | | `27017` | Host port for MongoDB |
 | `MONGODB_DB_NAME` | | `mcp_client` | MongoDB database name for sessions |
+
+### Redis (Shared Cache)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `REDIS_URL` | | — | Redis connection URL (e.g. `redis://redis:6379`). If not set, falls back to in-memory caching |
+| `REDIS_PORT` | | `6379` | Host port for direct Redis access |
 
 ### MCP Server
 
@@ -288,6 +298,7 @@ make dev-install
 | MCP SSE Endpoint | http://localhost:3000/sse | SSE transport for MCP protocol |
 | Helpdesk SSE Endpoint | http://localhost:3002/sse | SSE transport for helpdesk MCP |
 | MongoDB | `localhost:27017` | Direct Mongo access |
+| Redis | `localhost:6379` | Direct Redis access |
 | SigNoz UI | http://localhost:3301 | Observability dashboard (if running) |
 
 ### Database shells
@@ -536,14 +547,26 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 ├── lohono-mcp-server/src/          # MCP Server — database context tools
 │   ├── index-sse.ts                # SSE transport entrypoint (Express)
 │   ├── index.ts                    # Stdio transport entrypoint
-│   ├── tools.ts                    # MCP tool definitions and handlers
-│   ├── acl.ts                      # Access control enforcement
+│   ├── tools.ts                    # Tool facade (re-exports from tools/)
+│   ├── tools/                      # Modular tool plugin system
+│   │   ├── registry.ts             # Plugin registration and dispatch
+│   │   ├── types.ts                # ToolPlugin, ToolDefinition interfaces
+│   │   └── sales-funnel.plugin.ts  # Sales funnel tool plugins (5 tools)
+│   ├── acl.ts                      # ACL barrel export (re-exports from acl/)
+│   ├── acl/                        # Modular ACL subsystem
+│   │   ├── types.ts                # AclConfig, AclCheckResult interfaces
+│   │   ├── config.ts               # YAML config loader
+│   │   ├── email-resolver.ts       # User email resolution (3-source priority)
+│   │   ├── evaluator.ts            # Access check and tool filtering
+│   │   └── user-cache.ts           # Redis-backed user ACL cache (5min TTL)
+│   ├── db/                         # Database layer
+│   │   └── pool.ts                 # PG pool + circuit breaker + read-only query helper
 │   ├── database-catalog.ts         # Pre-built schema catalog loader
 │   ├── schema-rules.ts             # Sales funnel business rules (YAML)
 │   ├── query-analyzer.ts           # SQL query structural analysis
 │   ├── rule-generator.ts           # YAML rule generation from SQL
 │   ├── redash-client.ts            # Redash API integration
-│   ├── sales-funnel-builder.ts     # Sales funnel SQL builders
+│   ├── sales-funnel-builder.ts     # Parameterized sales funnel SQL builders
 │   ├── time-range/                 # Natural language time expression parsing
 │   └── nlq-resolver/               # NLQ intent detection and resolution
 │
@@ -554,11 +577,11 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 │
 ├── lohono-mcp-client/src/          # MCP Client — Claude orchestration layer
 │   ├── index.ts                    # Entrypoint: connects MongoDB, PG, MCP servers
-│   ├── server.ts                   # Express routes (auth, sessions, chat, health)
-│   ├── agent.ts                    # Claude agentic loop (up to 20 tool rounds)
-│   ├── mcp-bridge.ts               # Multi-server SSE client with tool-level routing
-│   ├── db.ts                       # MongoDB session/message CRUD
-│   └── auth.ts                     # Google OAuth + staff verification via PG
+│   ├── server.ts                   # Express routes + rate limiting + SSE streaming
+│   ├── agent.ts                    # Claude agentic loop + streaming generator
+│   ├── mcp-bridge.ts               # Multi-server SSE client with auto-reconnection
+│   ├── db.ts                       # MongoDB CRUD with windowed message retrieval
+│   └── auth.ts                     # Google OAuth + sliding-window session TTL (24h)
 │
 ├── lohono-chat-client/             # React SPA (separate package.json, Vite + Tailwind)
 │   └── src/
@@ -574,6 +597,12 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 │   ├── spans.ts                    # Custom span helpers (MCP, DB, Claude)
 │   ├── sanitize.ts                 # PII masking and data sanitization
 │   └── index.ts                    # Barrel export
+│
+├── shared/redis/src/              # Redis cache abstraction
+│   └── index.ts                    # RedisCache<T> class with in-memory fallback
+│
+├── shared/circuit-breaker/src/    # Circuit breaker pattern
+│   └── index.ts                    # CircuitBreaker class (closed→open→half-open)
 │
 ├── database/                       # Static catalog data and scripts
 │   ├── schema/
@@ -604,6 +633,7 @@ In SigNoz, search for spans with `db.system = "postgresql"` to see query timing 
 ├── otel-collector-config.yaml      # OTel Collector pipeline config
 ├── nginx.conf                      # nginx config for web SPA
 ├── Makefile                        # All operational commands
+├── vitest.config.ts                # Vitest test runner configuration
 └── .env.example                    # Environment variable template
 ```
 
