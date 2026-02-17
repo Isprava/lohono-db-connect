@@ -253,23 +253,25 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
 
-    // Create a streaming assistant message placeholder
-    const streamingMsg: Message = {
-      sessionId: currentSessionId,
-      role: "assistant",
-      content: "",
-      toolUseId: STREAMING_MARKER, // marks this as being streamed
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, streamingMsg]);
-
     const sid = currentSessionId;
+
+    // Helper: ensure a streaming placeholder exists, create on first use
+    const ensureStreamingMsg = (prev: Message[]): Message[] => {
+      if (prev.some((m) => m.toolUseId === STREAMING_MARKER)) return prev;
+      return [...prev, {
+        sessionId: sid,
+        role: "assistant" as const,
+        content: "",
+        toolUseId: STREAMING_MARKER,
+        createdAt: new Date().toISOString(),
+      }];
+    };
 
     try {
       await sessionsApi.sendMessageStream(sid, text, {
         onTextDelta: (delta) => {
           setMessages((prev) => {
-            const updated = [...prev];
+            const updated = ensureStreamingMsg(prev);
             const last = updated[updated.length - 1];
             if (last?.toolUseId === STREAMING_MARKER) {
               updated[updated.length - 1] = { ...last, content: last.content + delta };
@@ -279,11 +281,12 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
         },
         onToolStart: (name) => {
           setMessages((prev) => {
-            const updated = [...prev];
+            const updated = ensureStreamingMsg(prev);
             const last = updated[updated.length - 1];
             if (last?.toolUseId === STREAMING_MARKER) {
-              // If there was text, finalize it and add a tool indicator
-              updated[updated.length - 1] = { ...last, content: last.content + `\n\n*Querying ${name}...*` };
+              // Add tool indicator — use \n\n prefix only if there's existing text
+              const prefix = last.content ? "\n\n" : "";
+              updated[updated.length - 1] = { ...last, content: last.content + `${prefix}*Querying ${name}...*` };
             }
             return updated;
           });
@@ -294,8 +297,8 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
             const updated = [...prev];
             const last = updated[updated.length - 1];
             if (last?.toolUseId === STREAMING_MARKER) {
-              // Strip the "Querying..." indicator
-              const cleaned = last.content.replace(/\n\n\*Querying [^*]+\.\.\.\*$/, "");
+              // Strip the "Querying..." indicator (with or without leading newlines)
+              const cleaned = last.content.replace(/(\n\n)?\*Querying [^*]+\.\.\.\*$/, "");
               updated[updated.length - 1] = { ...last, content: cleaned };
             }
             return updated;
