@@ -46,12 +46,13 @@ export class RedisCache<T> {
     return entry.value;
   }
 
-  async set(key: string, value: T): Promise<void> {
+  async set(key: string, value: T, ttlOverride?: number): Promise<void> {
+    const ttl = ttlOverride ?? this.ttlSeconds;
     const redis = getRedisClient();
 
     if (redis && isRedisAvailable()) {
       try {
-        await redis.set(this.redisKey(key), JSON.stringify(value), "EX", this.ttlSeconds);
+        await redis.set(this.redisKey(key), JSON.stringify(value), "EX", ttl);
         return;
       } catch (err) {
         logger.warn(`RedisCache.set failed for ${this.prefix}:${key}: ${err instanceof Error ? err.message : String(err)}`);
@@ -62,7 +63,7 @@ export class RedisCache<T> {
     // In-memory fallback
     this.memCache.set(key, {
       value,
-      expiresAt: Date.now() + this.ttlSeconds * 1000,
+      expiresAt: Date.now() + ttl * 1000,
     });
   }
 

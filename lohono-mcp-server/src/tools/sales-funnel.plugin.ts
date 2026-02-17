@@ -32,7 +32,21 @@ interface CacheEntry {
   rowCount: number | null;
 }
 
-const queryCache = new RedisCache<CacheEntry>("query:funnel", 60); // 60 seconds TTL
+const HISTORICAL_TTL = 86_400; // 24 hours — past data doesn't change
+const CURRENT_TTL = 60;       // 60 seconds — current month data is live
+
+const queryCache = new RedisCache<CacheEntry>("query:funnel", CURRENT_TTL);
+
+/** Returns true if the entire date range falls before the current month in IST. */
+function isHistoricalRange(endDate: string): boolean {
+  // IST is UTC+5:30 — compute the first day of the current month in IST
+  const nowUtc = new Date();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(nowUtc.getTime() + istOffsetMs);
+  const startOfMonthIst = new Date(nowIst.getFullYear(), nowIst.getMonth(), 1);
+  const endParsed = new Date(endDate + "T00:00:00");
+  return endParsed < startOfMonthIst;
+}
 
 // ── Build tool description with metric names from config ────────────────────
 
@@ -97,9 +111,10 @@ export const getSalesFunnelPlugin: ToolPlugin = {
     const query = buildSalesFunnelQuery(validVertical, locations, metricKey);
     const result = await executeReadOnlyQuery(query.sql, [start_date, end_date, ...query.params]);
 
-    // Cache
+    // Cache — historical date ranges get a 24h TTL, current month gets 60s
     const rows = result.rows as Record<string, unknown>[];
-    await queryCache.set(cacheKey, { rows, rowCount: result.rowCount });
+    const ttl = isHistoricalRange(end_date) ? HISTORICAL_TTL : CURRENT_TTL;
+    await queryCache.set(cacheKey, { rows, rowCount: result.rowCount }, ttl);
 
     return {
       content: [{
