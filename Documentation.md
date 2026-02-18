@@ -47,6 +47,7 @@ graph TB
     subgraph Data Stores
         PG[("PostgreSQL<br/>RDS Readonly Replica")]
         Mongo[("MongoDB<br/>Sessions & Auth")]
+        Redis[("Redis<br/>Shared Cache")]
         Bedrock["AWS Bedrock<br/>Knowledge Base"]
         Catalog["JSON Catalogs<br/>(in-memory)"]
     end
@@ -59,6 +60,8 @@ graph TB
 
     DBServer -->|"READ ONLY SQL"| PG
     DBServer -->|Schema lookups| Catalog
+    DBServer -->|Cache| Redis
+    Client -->|Cache| Redis
     HDServer -->|RetrieveAndGenerate| Bedrock
 ```
 
@@ -68,6 +71,7 @@ graph TB
 graph LR
     subgraph "Production (docker-compose.yml)"
         mongo["mongo:7<br/>:27017"]
+        redis_c["redis:7-alpine<br/>:6379"]
         mcp["mcp-server<br/>:3000"]
         helpdesk["helpdesk-server<br/>:3002"]
         client["mcp-client<br/>:3001"]
@@ -88,6 +92,8 @@ graph LR
     client --> mcp
     client --> helpdesk
     client --> mongo
+    client --> redis_c
+    mcp --> redis_c
     mcp --> tunnel
     client --> tunnel
     tunnel -->|SSH| rds
@@ -107,6 +113,7 @@ graph LR
 | **mcp-server** | 3000 | node:20-alpine | Database query tools via MCP protocol |
 | **helpdesk-server** | 3002 | node:20-alpine | AWS Bedrock Knowledge Base via MCP protocol |
 | **mongo** | 27017 | mongo:7 | Chat sessions, messages, auth sessions |
+| **redis** | 6379 | redis:7-alpine | Shared cache (user ACLs, tool lists, query results) |
 | **ssh-tunnel** | 6333 | alpine (local only) | SSH tunnel to RDS readonly replica |
 
 ### Dependency Chain
@@ -117,6 +124,8 @@ graph TD
     client --> mcp["mcp-server"]
     client --> helpdesk["helpdesk-server"]
     client --> mongo["mongo"]
+    client --> redis_d["redis"]
+    mcp --> redis_d
     mcp --> tunnel["ssh-tunnel<br/>(local only)"]
     client --> tunnel
 ```
@@ -184,14 +193,25 @@ sequenceDiagram
     Pool-->>Tool: formatted JSON result
 ```
 
-### Tool Registration Pattern
+### Tool Plugin System
 
-All tools are defined in `tools.ts`:
-1. Define a Zod input schema for validation
-2. Add to the `toolDefinitions` array (name, description, JSON Schema)
-3. Add a handler case in `handleToolCall()`
+Tools use a modular **plugin architecture** defined in `tools/`:
 
-Both transport entrypoints (`index.ts`, `index-sse.ts`) register the same tool definitions and handler.
+1. Define a `ToolPlugin` in a plugin file (e.g., `tools/sales-funnel.plugin.ts`)
+2. Each plugin bundles a `ToolDefinition` (JSON Schema) and a handler function
+3. Register plugins via `registerPlugins()` in `tools/registry.ts`
+4. The registry dispatches tool calls to the correct plugin after ACL enforcement
+
+```mermaid
+graph LR
+    Import["tools.ts<br/>(facade)"] --> Registry["tools/registry.ts"]
+    Registry --> Plugin1["sales-funnel.plugin.ts<br/>(5 tools)"]
+    Registry --> Plugin2["... future plugins"]
+    Plugin1 --> Cache["Redis Cache<br/>(60s TTL)"]
+    Plugin1 --> DB["db/pool.ts<br/>(circuit breaker)"]
+```
+
+Both transport entrypoints (`index.ts`, `index-sse.ts`) register the same tool definitions and handler via the facade in `tools.ts`.
 
 ---
 
@@ -253,13 +273,18 @@ The MCP Client is the central orchestration layer. It connects to MongoDB for pe
 
 ### Agentic Loop
 
-Claude operates in a loop of up to 20 rounds. Each round, Claude can call tools or produce a final text answer.
+Claude operates in a loop of up to 20 rounds. Each round, Claude can call tools or produce a final text answer. Message history is **windowed** to the most recent 50 messages to control token costs.
+
+Two execution modes are available:
+
+- **`chat()`** — Batch mode: returns the complete response after all rounds finish
+- **`chatStream()`** — SSE streaming mode: yields `StreamEvent` objects as an async generator, enabling real-time text deltas and tool progress updates in the UI
 
 ```mermaid
 stateDiagram-v2
     [*] --> SaveUserMessage
     SaveUserMessage --> LoadHistory: Persist to MongoDB
-    LoadHistory --> ReconstructMessages: Full conversation from DB
+    LoadHistory --> ReconstructMessages: Windowed (last 50 messages)
     ReconstructMessages --> CallClaude: text + tool_use + tool_result blocks
 
     CallClaude --> CheckResponse
@@ -275,6 +300,18 @@ stateDiagram-v2
     SaveAssistant --> ReturnResponse: Save to MongoDB
     ReturnResponse --> [*]: {assistantText, toolCalls}
 ```
+
+### SSE Streaming Events
+
+The streaming endpoint (`GET /api/sessions/:id/messages/stream`) emits these event types:
+
+| Event | Data | Description |
+|-------|------|-------------|
+| `text_delta` | `{ text }` | Incremental text chunk from Claude |
+| `tool_start` | `{ name, id }` | Tool execution began |
+| `tool_end` | `{ name, id }` | Tool execution completed |
+| `done` | `{ assistantText }` | All rounds complete, final text |
+| `error` | `{ message }` | Error occurred during processing |
 
 ### System Prompt Routing
 
@@ -361,7 +398,15 @@ if (process.env.HELPDESK_SSE_URL) {
 }
 ```
 
-Tool lists are cached per user with a 5-minute TTL. ACL filtering is applied based on the user's permissions.
+Tool lists are cached per user in Redis with a 5-minute TTL. ACL filtering is applied based on the user's permissions.
+
+### Resilience Features
+
+The MCP bridge includes several resilience mechanisms:
+
+- **Circuit breakers** — Per-server circuit breakers (5-failure threshold, 30s reset) prevent cascading failures when an MCP server is down
+- **Auto-reconnection** — On connection failure, the bridge triggers background reconnection with exponential backoff (1s → 60s, max 10 attempts)
+- **Redis-backed caching** — User tool lists are cached in Redis (with in-memory fallback) to avoid repeated tool discovery calls
 
 ---
 
@@ -387,14 +432,22 @@ sequenceDiagram
     PG-->>API: Staff record
 
     alt Staff exists and active
-        API->>Mongo: Create auth session
-        Mongo-->>API: Session with JWT
+        API->>Mongo: Create auth session (24h TTL)
+        Mongo-->>API: Session with token
         API-->>Chat: {token, user}
-        Chat->>Chat: Store JWT in localStorage
+        Chat->>Chat: Store token in localStorage
     else Staff not found or inactive
         API-->>Chat: 403 Forbidden
     end
 ```
+
+### Session Expiry
+
+Auth sessions use a **sliding-window TTL** of 24 hours:
+- Each session has an `expiresAt` field set 24 hours from creation
+- On every `validateSession()` call, `expiresAt` is refreshed (sliding window)
+- MongoDB TTL index auto-deletes expired session documents
+- Sessions include `lastAccessedAt` for audit tracking
 
 ### User Email Resolution
 
@@ -408,10 +461,10 @@ User identity is resolved from three sources (priority order):
 
 ## Access Control (ACL)
 
-**Source:** `lohono-mcp-server/src/acl.ts`
+**Source:** `lohono-mcp-server/src/acl/` (modular subsystem, re-exported via `acl.ts` barrel)
 **Config:** `database/schema/acl.yml`
 
-Tool access is controlled per-user based on ACL arrays stored in the `staffs.acl_array` PostgreSQL column. ACLs are cached for 5 minutes.
+Tool access is controlled per-user based on ACL arrays stored in the `staffs.acl_array` PostgreSQL column. ACLs are cached in Redis (with in-memory fallback) for 5 minutes. The ACL subsystem is split into focused modules: `types.ts`, `config.ts`, `email-resolver.ts`, `evaluator.ts`, and `user-cache.ts`.
 
 ### ACL Evaluation Flow
 
@@ -541,9 +594,9 @@ This connects to PostgreSQL, dumps schema metadata, and writes the JSON files to
 
 ## Sales Funnel Tool
 
-**Source:** `lohono-mcp-server/src/tools.ts` (handler), `lohono-mcp-server/src/sales-funnel-builder.ts` (SQL builders)
+**Source:** `lohono-mcp-server/src/tools/sales-funnel.plugin.ts` (plugin), `lohono-mcp-server/src/sales-funnel-builder.ts` (SQL builders)
 
-The `get_sales_funnel` tool is a dedicated MCP tool with hardcoded SQL that computes four metrics: **Leads, Prospects, Accounts, and Sales** for any date range.
+The `get_sales_funnel` tool is a dedicated MCP tool with parameterized SQL that computes four metrics: **Leads, Prospects, Accounts, and Sales** for any date range. Query results are cached in Redis with a 60-second TTL.
 
 ### Why a Dedicated Tool?
 
@@ -583,9 +636,22 @@ graph TD
     DC --> S
 ```
 
+### Parameterized Queries
+
+All sales funnel SQL uses **parameterized queries** (`$1`, `$2`, etc.) to prevent SQL injection. The `ParameterizedQuery` type bundles SQL with its parameter values:
+
+```typescript
+interface ParameterizedQuery {
+  sql: string;
+  params: unknown[];
+}
+```
+
+Slug exclusions and source filters (e.g., DnB) are passed as parameters rather than interpolated into SQL strings.
+
 ### Usage
 
-The tool accepts `start_date` and `end_date` parameters in `YYYY-MM-DD` format and returns all four metrics in a single call.
+The tool accepts `start_date` and `end_date` parameters in `YYYY-MM-DD` format and returns all four metrics in a single call. Results are cached in Redis for 60 seconds.
 
 ---
 
@@ -893,24 +959,111 @@ sequenceDiagram
 
 ---
 
+## Circuit Breakers
+
+**Source:** `shared/circuit-breaker/src/`
+
+Circuit breakers prevent cascading failures across the platform. They follow the standard **closed → open → half-open** state machine.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Open: Failure threshold reached
+    Open --> HalfOpen: Reset timeout elapsed
+    HalfOpen --> Closed: Probe succeeds
+    HalfOpen --> Open: Probe fails
+```
+
+### Circuit Breaker Instances
+
+| Instance | Location | Threshold | Reset Timeout | Purpose |
+|----------|----------|-----------|---------------|---------|
+| `claude-api` | `agent.ts` | 3 failures | 60s | Protects against Claude API outages |
+| `mcp-<serverId>` | `mcp-bridge.ts` | 5 failures | 30s | Per-server MCP connection protection |
+| `postgresql` | `db/pool.ts` | 5 failures | 30s | Database connection protection |
+
+Circuit breaker states are exposed via health check endpoints:
+- `GET /api/health` → `circuits.claude`, `circuits.mcp.*`
+- `GET /health` → `circuits.postgresql`
+
+---
+
+## Redis Cache Layer
+
+**Source:** `shared/redis/src/`
+
+Redis provides a shared cache layer used across MCP Server and MCP Client. The `RedisCache<T>` class provides a typed caching abstraction with automatic fallback to in-memory `Map` when Redis is unavailable.
+
+### Cache Instances
+
+| Cache Key Prefix | TTL | Used By | Purpose |
+|------------------|-----|---------|---------|
+| `tools:user` | 5 min | `mcp-bridge.ts` | Per-user filtered tool lists |
+| `acl:user` | 5 min | `acl/user-cache.ts` | User ACL arrays from staffs table |
+| `funnel:*` | 60s | `sales-funnel.plugin.ts` | Sales funnel query results |
+
+### Fallback Behavior
+
+If `REDIS_URL` is not set or Redis is unreachable, all caches fall back to in-memory `Map` storage. This ensures the platform works without Redis, though cache is not shared across processes.
+
+---
+
+## Rate Limiting
+
+**Source:** `lohono-mcp-client/src/server.ts`
+
+The MCP Client API enforces rate limits using `express-rate-limit`:
+
+| Limiter | Scope | Limit | Key |
+|---------|-------|-------|-----|
+| General | All `/api/*` (except health) | 60 req/min | User email or IP |
+| Chat | `POST /api/sessions/:id/messages` and SSE stream | 20 req/min | User email or IP |
+
+Rate limit headers follow the `draft-7` standard (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`).
+
+---
+
+## Testing
+
+**Source:** `vitest.config.ts`, `lohono-mcp-server/src/__tests__/`, `lohono-mcp-client/src/__tests__/`
+
+Tests use **Vitest** as the test runner:
+
+```bash
+npm test          # Run all tests once
+npm run test:watch # Watch mode
+```
+
+---
+
 ## Key Design Decisions
 
 1. **Claude IS the NLP engine** — No separate intent classifier or NLP-to-SQL translator. Claude autonomously explores the schema and generates SQL.
 
-2. **Multi-MCP server architecture** — Separates concerns: database tools and knowledge base tools run as independent MCP servers, connected via a routing bridge.
+2. **Multi-MCP server architecture** — Separates concerns: database tools and knowledge base tools run as independent MCP servers, connected via a routing bridge with auto-reconnection.
 
-3. **Read-only database access** — All queries run inside `BEGIN TRANSACTION READ ONLY` with a 30-second timeout.
+3. **Read-only database access** — All queries run inside `BEGIN TRANSACTION READ ONLY` with a 30-second timeout, protected by a circuit breaker.
 
 4. **Pre-built schema catalog** — Schema and FK lookups read from JSON files loaded at startup, not live `information_schema` queries.
 
-5. **Sales funnel as a dedicated tool** — The funnel SQL is too complex for Claude to reliably generate, so it's hardcoded with correct IST timezone handling, multi-source UNIONs, and window functions.
+5. **Sales funnel as a dedicated tool** — The funnel SQL is too complex for Claude to reliably generate, so it uses parameterized queries with correct IST timezone handling, multi-source UNIONs, and window functions. Results are cached in Redis (60s TTL).
 
-6. **ACL at the tool level** — Each tool call is validated against the user's `acl_array` from the `staffs` table.
+6. **ACL at the tool level** — Each tool call is validated against the user's `acl_array` from the `staffs` table, cached in Redis for 5 minutes.
 
 7. **External database** — No local PostgreSQL; all environments connect to external databases (RDS in production, via SSH tunnel for local dev).
 
-8. **Message reconstruction** — Full conversation history is rebuilt from MongoDB on each Claude API call.
+8. **Windowed message history** — Only the most recent 50 messages are sent to Claude, controlling token costs while preserving context.
 
 9. **Text sanitization** — XML markup and internal tool mechanics are stripped from Claude's responses before reaching the user.
 
 10. **Observability-first** — OpenTelemetry traces are emitted for every Claude call, tool execution, and DB query, exported to SigNoz via OTLP/gRPC.
+
+11. **SSE streaming** — Real-time response streaming via Server-Sent Events, delivering text deltas and tool progress to the UI as they happen.
+
+12. **Circuit breakers everywhere** — Claude API, MCP server connections, and PostgreSQL are all protected by circuit breakers to prevent cascading failures.
+
+13. **Modular plugin system** — Tools are defined as plugins with their own definition and handler, registered via a central registry. This simplifies adding new tools.
+
+14. **Redis with graceful degradation** — Redis provides shared caching but is optional. All caches fall back to in-memory `Map` when Redis is unavailable.
+
+15. **Rate limiting** — API endpoints are rate-limited (60 req/min general, 20 req/min for chat) to prevent abuse and control Claude API costs.

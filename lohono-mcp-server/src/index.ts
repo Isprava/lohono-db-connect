@@ -5,10 +5,6 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { toolDefinitions, handleToolCall, pool } from "./tools.js";
-import { resolveUserEmail, filterToolsByAccess, loadAclConfig } from "./acl.js";
-
-// Load ACL config at startup
-loadAclConfig();
 
 // Create MCP server
 const server = new Server(
@@ -23,18 +19,15 @@ const server = new Server(
   }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-  const meta = request.params?._meta as Record<string, unknown> | undefined;
-  const userEmail = resolveUserEmail(meta);
-  const tools = await filterToolsByAccess(toolDefinitions, userEmail, pool);
-  return { tools };
+// Return all tool definitions — ACL enforcement happens on the MCP Client side
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return { tools: toolDefinitions };
 });
 
+// Execute tool directly — ACL enforcement happens on the MCP Client side
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args, _meta } = request.params;
-  const meta = _meta as Record<string, unknown> | undefined;
-  const userEmail = resolveUserEmail(meta);
-  return handleToolCall(name, args, userEmail);
+  const { name, arguments: args } = request.params;
+  return handleToolCall(name, args);
 });
 
 // Graceful shutdown

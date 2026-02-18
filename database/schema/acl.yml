@@ -15,13 +15,10 @@ default_policy: "open"
 disabled_tools:
   - query  # Disabled: Use specialized tools like get_sales_funnel instead
 
-# ACL values that grant access to ALL tools (bypass per-tool checks)
-superuser_acls:
-  - STAFF_EDIT
-
 # Tools that require NO authentication at all (completely open)
+# NOTE: If a tool also has entries in tool_acls (YAML or Admin UI), the
+#       tool_acls take precedence and the tool is NOT treated as public.
 public_tools:
-  - get_sales_funnel
   - get_catalog_metadata
   - get_tables_summary
   - get_table_schema
@@ -30,74 +27,14 @@ public_tools:
   - get_schema_context
   - find_tables_by_column
   - get_relationship_chain
-  - list_tables
-  - describe_table
-  - list_schemas
 
 # ── Per-tool ACL mappings ───────────────────────────────────────────────────
-# Format: tool_name → list of ACL strings (user needs at least one)
-tool_acls:
-
-  # ── Database tools (powerful — restricted to dashboard/report users) ──
-  # query tool is DISABLED - see disabled_tools section above
-  # Use specialized tools like get_sales_funnel instead
-
-  list_tables:
-    - DASHBOARD_TASK_VIEW
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-
-  describe_table:
-    - DASHBOARD_TASK_VIEW
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-
-  list_schemas:
-    - DASHBOARD_TASK_VIEW
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-
-  # ── Sales funnel intelligence (read-oriented — broader access) ──
-  get_sales_funnel:
-    - DEVELOPMENT_OPP_LIST_VIEW
-    - DEVELOPMENT_OPP_VIEW
-    - DASHBOARD_ENQUIRIES_VIEW
-    - DASHBOARD_TASK_VIEW
-    - ENQUIRY_LIST_VIEW
-
-  get_sales_funnel_context:
-    - DEVELOPMENT_OPP_LIST_VIEW
-    - DEVELOPMENT_OPP_VIEW
-    - DASHBOARD_ENQUIRIES_VIEW
-    - DASHBOARD_TASK_VIEW
-
-  classify_sales_intent:
-    - DEVELOPMENT_OPP_LIST_VIEW
-    - DEVELOPMENT_OPP_VIEW
-    - DASHBOARD_ENQUIRIES_VIEW
-    - ENQUIRY_LIST_VIEW
-
-  get_query_template:
-    - DEVELOPMENT_OPP_LIST_VIEW
-    - DASHBOARD_ENQUIRIES_VIEW
-    - DASHBOARD_TASK_VIEW
-
-  list_query_patterns:
-    - DEVELOPMENT_OPP_LIST_VIEW
-    - DASHBOARD_ENQUIRIES_VIEW
-    - DASHBOARD_TASK_VIEW
-
-  # ── Query analysis & rule generation (admin/engineering tools) ──
-  analyze_query:
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-    - STAFF_EDIT
-
-  generate_rules:
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-    - STAFF_EDIT
-
-  # ── Redash integration (report-level access) ──
-  fetch_redash_query:
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-    - STAFF_EDIT
-
-  generate_rules_from_redash:
-    - DASHBOARD_TASK_REPORT_DOWNLOAD
-    - STAFF_EDIT
+# IMPORTANT: tool_acls are now managed ONLY via MongoDB (acl_configs collection).
+# Use the Admin UI or API endpoints to configure per-tool ACL requirements:
+#   - GET /api/admin/acl/tools - List all tool ACL configs
+#   - PUT /api/admin/acl/tools/:toolName - Update ACLs for a specific tool
+#   - DELETE /api/admin/acl/tools/:toolName - Remove ACL config for a tool
+#
+# The tool_acls section has been removed from this YAML file.
+# Only global settings (default_policy, superuser_acls, public_tools, disabled_tools)
+# are read from this file.

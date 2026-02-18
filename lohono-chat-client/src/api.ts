@@ -28,9 +28,12 @@ async function request<T>(
     if (!skipAuthRedirect) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/auth/callback";
     }
     throw new Error("Unauthorized");
+  }
+
+  if (res.status === 403) {
+    throw new Error("Access denied: You do not have permission to perform this action. Please contact your administrator.");
   }
 
   const data = await res.json();
@@ -47,6 +50,7 @@ export interface UserPublic {
   email: string;
   name: string;
   picture: string;
+  isAdmin?: boolean;
 }
 
 export interface AuthResponse {
@@ -94,6 +98,15 @@ export interface ChatResult {
   toolCalls: { name: string; input: Record<string, unknown>; result: string }[];
 }
 
+// ── SSE Stream types ──────────────────────────────────────────────────────
+
+export type StreamEvent =
+  | { event: "text_delta"; data: { text: string } }
+  | { event: "tool_start"; data: { name: string; id: string } }
+  | { event: "tool_end"; data: { name: string; id: string } }
+  | { event: "done"; data: { assistantText: string } }
+  | { event: "error"; data: { message: string } };
+
 export const sessions = {
   list: () => request<Session[]>("/sessions"),
   create: (title?: string) =>
@@ -108,5 +121,129 @@ export const sessions = {
     request<ChatResult>(`/sessions/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ message }),
+    }),
+
+  /**
+   * Stream a chat message response via SSE.
+   * Uses fetch + ReadableStream (not EventSource) so we can include auth headers.
+   */
+  sendMessageStream: async (
+    id: string,
+    message: string,
+    callbacks: {
+      onTextDelta: (text: string) => void;
+      onToolStart?: (name: string, toolId: string) => void;
+      onToolEnd?: (name: string, toolId: string) => void;
+      onDone: (assistantText: string) => void;
+      onError: (error: string) => void;
+    }
+  ): Promise<void> => {
+    const token = getToken();
+    const url = `${API_BASE}/sessions/${id}/messages/stream?message=${encodeURIComponent(message)}`;
+
+    const res = await fetch(url, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "same-origin",
+    });
+
+    if (res.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      throw new Error("Unauthorized");
+    }
+
+    if (res.status === 403) {
+      throw new Error("Access denied: You do not have permission to perform this action. Please contact your administrator.");
+    }
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE lines: "data: {...}\n\n"
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || ""; // keep incomplete last chunk
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        try {
+          const event = JSON.parse(trimmed.slice(6)) as StreamEvent;
+          switch (event.event) {
+            case "text_delta":
+              callbacks.onTextDelta(event.data.text);
+              break;
+            case "tool_start":
+              callbacks.onToolStart?.(event.data.name, event.data.id);
+              break;
+            case "tool_end":
+              callbacks.onToolEnd?.(event.data.name, event.data.id);
+              break;
+            case "done":
+              callbacks.onDone(event.data.assistantText);
+              break;
+            case "error":
+              callbacks.onError(event.data.message);
+              break;
+          }
+        } catch {
+          // skip malformed SSE lines
+        }
+      }
+    }
+  },
+};
+
+// ── Admin: ACL Management ─────────────────────────────────────────────────
+
+export interface AclToolConfig {
+  toolName: string;
+  acls: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface AclGlobalConfig {
+  default_policy: "open" | "deny";
+  public_tools: string[];
+  disabled_tools: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export const admin = {
+  listToolAcls: () => request<AclToolConfig[]>("/admin/acl/tools"),
+  upsertToolAcl: (toolName: string, acls: string[]) =>
+    request<AclToolConfig>(`/admin/acl/tools/${encodeURIComponent(toolName)}`, {
+      method: "PUT",
+      body: JSON.stringify({ acls }),
+    }),
+  deleteToolAcl: (toolName: string) =>
+    request<{ ok: boolean }>(`/admin/acl/tools/${encodeURIComponent(toolName)}`, {
+      method: "DELETE",
+    }),
+  getAvailableAcls: () => request<string[]>("/admin/acl/available-acls"),
+  getAvailableTools: () => request<string[]>("/admin/acl/available-tools"),
+  getGlobalConfig: () => request<AclGlobalConfig>("/admin/acl/global"),
+  updateGlobalConfig: (config: Partial<Pick<AclGlobalConfig, "default_policy" | "public_tools" | "disabled_tools">>) =>
+    request<AclGlobalConfig>("/admin/acl/global", {
+      method: "PUT",
+      body: JSON.stringify(config),
     }),
 };

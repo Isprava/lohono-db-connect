@@ -19,7 +19,8 @@
     "start:helpdesk": "node dist/lohono-helpdesk-server/src/index-sse.js",
     "dev:chat": "npm --prefix lohono-chat-client run dev",
     "build:chat": "npm --prefix lohono-chat-client run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "mcp",
@@ -36,7 +37,8 @@
     "@types/pg": "^8.16.0",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
@@ -54,6 +56,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
+    "ioredis": "^5.9.3",
     "js-yaml": "^4.1.1",
     "mongodb": "^7.1.0",
     "pg": "^8.18.0",

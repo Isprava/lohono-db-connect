@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install dependencies (layer caching)
 COPY lohono-chat-client/package.json lohono-chat-client/package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 
 # Copy source and build
 COPY lohono-chat-client/tsconfig.json lohono-chat-client/tsconfig.app.json lohono-chat-client/tsconfig.node.json ./

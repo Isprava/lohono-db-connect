@@ -7,6 +7,9 @@ import {
   type SessionWithMessages,
 } from "../api";
 
+// Sentinel to mark messages currently being streamed (skip typewriter)
+const STREAMING_MARKER = "__streaming__";
+
 // ── Typewriter Hook (block-level reveal) ─────────────────────────────
 // Reveals text one markdown block at a time (split by double newlines)
 // so that tables, lists, and other structures appear as complete units.
@@ -58,10 +61,12 @@ function MessageBubble({ msg, isLatest }: { msg: Message; isLatest: boolean }) {
   const isUser = msg.role === "user";
   const isAssistant = msg.role === "assistant";
 
+  // Skip typewriter for messages that are being streamed in real-time
+  const isStreaming = msg.toolUseId === STREAMING_MARKER;
   const { displayedText, isComplete } = useTypewriter(
     msg.content,
     15,
-    isAssistant && isLatest
+    isAssistant && isLatest && !isStreaming
   );
 
   return (
@@ -206,9 +211,18 @@ interface ChatViewProps {
   onMenuClick: () => void;
 }
 
+const ACCESS_DENIED_MSG =
+  "You are not authorized to access this data. Please contact your administrator to request the necessary permissions.";
+
+function isAuthError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.message === "Unauthorized" || /access denied|permission/i.test(err.message);
+}
+
 export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sending, setSending] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load messages when session changes
@@ -220,7 +234,11 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
     sessionsApi
       .get(sessionId)
       .then((data: SessionWithMessages) => setMessages(data.messages))
-      .catch(console.error);
+      .catch((err) => {
+        if (isAuthError(err)) {
+          setAccessDenied(true);
+        }
+      });
   }, [sessionId]);
 
   // Auto-scroll to bottom
@@ -232,10 +250,17 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
     let currentSessionId = sessionId;
 
     // Create session if none exists
-    if (!currentSessionId) {
-      const session = await sessionsApi.create();
-      currentSessionId = session.sessionId;
-      onSessionCreated(currentSessionId);
+    try {
+      if (!currentSessionId) {
+        const session = await sessionsApi.create();
+        currentSessionId = session.sessionId;
+        onSessionCreated(currentSessionId);
+      }
+    } catch (err) {
+      if (isAuthError(err)) {
+        setAccessDenied(true);
+      }
+      return;
     }
 
     // Optimistically add user message
@@ -248,26 +273,143 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
 
+    const sid = currentSessionId;
+
+    // Helper: ensure a streaming placeholder exists, create on first use
+    const ensureStreamingMsg = (prev: Message[]): Message[] => {
+      if (prev.some((m) => m.toolUseId === STREAMING_MARKER)) return prev;
+      return [...prev, {
+        sessionId: sid,
+        role: "assistant" as const,
+        content: "",
+        toolUseId: STREAMING_MARKER,
+        createdAt: new Date().toISOString(),
+      }];
+    };
+
     try {
-      await sessionsApi.sendMessage(currentSessionId, text);
-      // Reload full message list to get all tool calls and final response
-      const data = await sessionsApi.get(currentSessionId);
-      setMessages(data.messages);
-    } catch (err) {
-      // Add error message
-      setMessages((prev) => [
-        ...prev,
-        {
-          sessionId: currentSessionId!,
-          role: "assistant",
-          content: `Error: ${err instanceof Error ? err.message : "Something went wrong"}`,
-          createdAt: new Date().toISOString(),
+      await sessionsApi.sendMessageStream(sid, text, {
+        onTextDelta: (delta) => {
+          setMessages((prev) => {
+            const updated = ensureStreamingMsg(prev);
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              updated[updated.length - 1] = { ...last, content: last.content + delta };
+            }
+            return updated;
+          });
         },
-      ]);
+        onToolStart: (name) => {
+          setMessages((prev) => {
+            const updated = ensureStreamingMsg(prev);
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              // Add tool indicator — use \n\n prefix only if there's existing text
+              const prefix = last.content ? "\n\n" : "";
+              updated[updated.length - 1] = { ...last, content: last.content + `${prefix}*Querying ${name}...*` };
+            }
+            return updated;
+          });
+        },
+        onToolEnd: () => {
+          // Remove tool indicator text — next round will stream new text
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              // Strip the "Querying..." indicator (with or without leading newlines)
+              const cleaned = last.content.replace(/(\n\n)?\*Querying [^*]+\.\.\.\*$/, "");
+              updated[updated.length - 1] = { ...last, content: cleaned };
+            }
+            return updated;
+          });
+        },
+        onDone: async () => {
+          // Reload full message list from DB for consistency
+          try {
+            const data = await sessionsApi.get(sid);
+            setMessages(data.messages);
+          } catch {
+            // Keep streamed messages if reload fails
+          }
+        },
+        onError: (errorMsg) => {
+          const denied = /access denied|not authorized|unauthorized|permission/i.test(errorMsg);
+          const displayMsg = denied ? ACCESS_DENIED_MSG : `Error: ${errorMsg}`;
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.toolUseId === STREAMING_MARKER) {
+              updated[updated.length - 1] = {
+                ...last,
+                content: displayMsg,
+                toolUseId: undefined,
+              };
+            } else {
+              updated.push({
+                sessionId: sid,
+                role: "assistant",
+                content: displayMsg,
+                createdAt: new Date().toISOString(),
+              });
+            }
+            return updated;
+          });
+        },
+      });
+    } catch (err) {
+      if (isAuthError(err)) {
+        setAccessDenied(true);
+      }
+      const errMsg = err instanceof Error ? err.message : "Something went wrong";
+      const displayMsg = isAuthError(err) ? ACCESS_DENIED_MSG : `Error: ${errMsg}`;
+
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.toolUseId === STREAMING_MARKER) {
+          updated[updated.length - 1] = {
+            ...last,
+            content: displayMsg,
+            toolUseId: undefined,
+          };
+        } else {
+          updated.push({
+            sessionId: sid,
+            role: "assistant",
+            content: displayMsg,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        return updated;
+      });
     } finally {
       setSending(false);
     }
   };
+
+  // Access denied state
+  if (accessDenied) {
+    return (
+      <div className="flex-1 flex flex-col h-full bg-surface">
+        <MobileHeader onMenuClick={onMenuClick} />
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center max-w-md">
+            <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-5">
+              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m5-6a3 3 0 11-6 0 3 3 0 016 0zm7 3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-primary mb-2">Access Denied</h2>
+            <p className="text-text/60 text-sm leading-relaxed">
+              You do not have the required permissions to query this data.
+              Please reach out to your administrator to request access.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Empty state
   if (!sessionId && messages.length === 0) {
@@ -331,7 +473,7 @@ export default function ChatView({ sessionId, onSessionCreated, onMenuClick }: C
               isLatest={i === messages.length - 1 && msg.role === "assistant"}
             />
           ))}
-          {sending && (
+          {sending && !messages.some((m) => m.toolUseId === STREAMING_MARKER && m.content) && (
             <div className="flex justify-start mb-6 animate-fade-in">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden shadow-lg bg-surface flex items-center justify-center p-1.5">

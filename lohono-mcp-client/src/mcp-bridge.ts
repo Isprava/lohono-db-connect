@@ -2,6 +2,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type Anthropic from "@anthropic-ai/sdk";
 import { withMCPToolSpan, logInfo, logError } from "../../shared/observability/src/index.js";
+import { RedisCache } from "../../shared/redis/src/index.js";
+import { CircuitBreaker, type CircuitState } from "../../shared/circuit-breaker/src/index.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,43 +30,134 @@ interface MCPServerConnection {
   client: Client;
   sseUrl: string;
   tools: MCPTool[];
+  /** Whether a reconnection attempt is in progress */
+  reconnecting: boolean;
 }
+
+// ── Reconnection constants ───────────────────────────────────────────────
+
+const RECONNECT_BASE_DELAY_MS = 1000;   // 1s initial delay
+const RECONNECT_MAX_DELAY_MS = 60_000;  // 60s max delay
+const RECONNECT_MAX_ATTEMPTS = 10;
 
 // ── Multi-Server Registry ─────────────────────────────────────────────────
 
 const servers = new Map<string, MCPServerConnection>();
 const toolToServer = new Map<string, string>(); // tool name → server ID
+/** Original configs for reconnection */
+let serverConfigs: MCPServerConfig[] = [];
+/** Per-server circuit breakers */
+const serverCircuitBreakers = new Map<string, CircuitBreaker>();
+
+function getServerCircuitBreaker(serverId: string): CircuitBreaker {
+  let cb = serverCircuitBreakers.get(serverId);
+  if (!cb) {
+    cb = new CircuitBreaker({ name: `mcp-${serverId}`, failureThreshold: 5, resetTimeoutMs: 30_000 });
+    serverCircuitBreakers.set(serverId, cb);
+  }
+  return cb;
+}
+
+/** Get circuit breaker states for all MCP servers (for health checks) */
+export function getMcpCircuitStates(): Record<string, CircuitState> {
+  const states: Record<string, CircuitState> = {};
+  for (const [id, cb] of serverCircuitBreakers) {
+    states[id] = cb.getState();
+  }
+  return states;
+}
+
+/**
+ * Connect to a single MCP server. Returns the connection or null on failure.
+ */
+async function connectSingleServer(config: MCPServerConfig): Promise<MCPServerConnection | null> {
+  try {
+    const client = new Client(
+      { name: `lohono-mcp-client-${config.id}`, version: "1.0.0" },
+      { capabilities: {} }
+    );
+
+    const transport = new SSEClientTransport(new URL(`${config.sseUrl}/sse`));
+    await client.connect(transport);
+
+    const result = await client.listTools();
+    const tools = result.tools as MCPTool[];
+
+    const conn: MCPServerConnection = {
+      id: config.id,
+      client,
+      sseUrl: config.sseUrl,
+      tools,
+      reconnecting: false,
+    };
+
+    // Register tools
+    for (const tool of tools) {
+      toolToServer.set(tool.name, config.id);
+    }
+
+    logInfo(`MCP server connected: ${config.id}`, {
+      mcp_url: config.sseUrl,
+      tool_count: String(tools.length),
+    });
+
+    return conn;
+  } catch (err) {
+    logError(
+      `Failed to connect MCP server: ${config.id}`,
+      err instanceof Error ? err : new Error(String(err)),
+      { mcp_url: config.sseUrl }
+    );
+    return null;
+  }
+}
+
+/**
+ * Reconnect a single MCP server with exponential backoff.
+ * Runs in the background — does not block callers.
+ */
+async function reconnectServer(config: MCPServerConfig): Promise<void> {
+  const existing = servers.get(config.id);
+  if (existing?.reconnecting) return; // already reconnecting
+
+  if (existing) {
+    existing.reconnecting = true;
+  }
+
+  for (let attempt = 1; attempt <= RECONNECT_MAX_ATTEMPTS; attempt++) {
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
+      RECONNECT_MAX_DELAY_MS
+    );
+
+    logInfo(`Reconnecting MCP server ${config.id} (attempt ${attempt}/${RECONNECT_MAX_ATTEMPTS}) in ${delay}ms`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    const conn = await connectSingleServer(config);
+    if (conn) {
+      servers.set(config.id, conn);
+      return;
+    }
+  }
+
+  logError(
+    `MCP server ${config.id}: reconnection failed after ${RECONNECT_MAX_ATTEMPTS} attempts`,
+    new Error("Max reconnection attempts reached"),
+    { mcp_url: config.sseUrl }
+  );
+
+  // Mark as no longer reconnecting so a future call can retry
+  const server = servers.get(config.id);
+  if (server) server.reconnecting = false;
+}
 
 export async function connectMCP(configs: MCPServerConfig[]): Promise<void> {
+  serverConfigs = configs;
+
   for (const config of configs) {
-    try {
-      const client = new Client(
-        { name: `lohono-mcp-client-${config.id}`, version: "1.0.0" },
-        { capabilities: {} }
-      );
-
-      const transport = new SSEClientTransport(new URL(`${config.sseUrl}/sse`));
-      await client.connect(transport);
-
-      const result = await client.listTools();
-      const tools = result.tools as MCPTool[];
-
-      servers.set(config.id, { id: config.id, client, sseUrl: config.sseUrl, tools });
-
-      for (const tool of tools) {
-        toolToServer.set(tool.name, config.id);
-      }
-
-      logInfo(`MCP server connected: ${config.id}`, {
-        mcp_url: config.sseUrl,
-        tool_count: String(tools.length),
-      });
-    } catch (err) {
-      logError(
-        `Failed to connect MCP server: ${config.id}`,
-        err instanceof Error ? err : new Error(String(err)),
-        { mcp_url: config.sseUrl }
-      );
+    const conn = await connectSingleServer(config);
+    if (conn) {
+      servers.set(config.id, conn);
     }
   }
 
@@ -90,9 +183,9 @@ export function getToolsForClaude(): ClaudeTool[] {
  * them formatted for the Claude Messages API. Results are cached per user.
  */
 export async function getToolsForUser(userEmail: string): Promise<ClaudeTool[]> {
-  const cached = userToolsCache.get(userEmail);
-  if (cached && Date.now() - cached.fetchedAt < USER_TOOLS_CACHE_TTL_MS) {
-    return cached.tools;
+  const cached = await userToolsCache.get(userEmail);
+  if (cached) {
+    return cached;
   }
 
   const allTools: ClaudeTool[] = [];
@@ -112,7 +205,7 @@ export async function getToolsForUser(userEmail: string): Promise<ClaudeTool[]> 
     }
   }
 
-  userToolsCache.set(userEmail, { tools: allTools, fetchedAt: Date.now() });
+  await userToolsCache.set(userEmail, allTools);
   return allTools;
 }
 
@@ -128,12 +221,12 @@ function toClaudeTool(t: MCPTool): ClaudeTool {
   };
 }
 
-const USER_TOOLS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const userToolsCache = new Map<string, { tools: ClaudeTool[]; fetchedAt: number }>();
+const userToolsCache = new RedisCache<ClaudeTool[]>("tools:user", 5 * 60); // 5 minutes
 
 /**
  * Invoke a tool on the appropriate MCP server and return the text result.
  * Routes to the correct server based on tool name.
+ * On connection failure, triggers background reconnection.
  */
 export async function callTool(
   name: string,
@@ -150,27 +243,41 @@ export async function callTool(
     throw new Error(`MCP server not connected: ${serverId}`);
   }
 
-  return withMCPToolSpan(
-    { toolName: name, toolArgs: args },
-    async (span) => {
-      span.setAttribute("mcp.server.id", serverId);
+  const circuitBreaker = getServerCircuitBreaker(serverId);
 
-      const result = await server.client.callTool({
-        name,
-        arguments: args,
-        _meta: userEmail ? { user_email: userEmail } : undefined,
-      } as Parameters<typeof server.client.callTool>[0]);
+  try {
+    return await circuitBreaker.execute(() =>
+      withMCPToolSpan(
+        { toolName: name, toolArgs: args },
+        async (span) => {
+          span.setAttribute("mcp.server.id", serverId);
 
-      // MCP returns content as array of { type, text } blocks
-      const textParts = (result.content as { type: string; text: string }[])
-        .filter((c) => c.type === "text")
-        .map((c) => c.text);
+          const result = await server.client.callTool({
+            name,
+            arguments: args,
+            _meta: userEmail ? { user_email: userEmail } : undefined,
+          } as Parameters<typeof server.client.callTool>[0]);
 
-      const text = textParts.join("\n") || JSON.stringify(result.content);
-      span.setAttribute("mcp.tool.result_length", text.length);
-      return text;
+          // MCP returns content as array of { type, text } blocks
+          const textParts = (result.content as { type: string; text: string }[])
+            .filter((c) => c.type === "text")
+            .map((c) => c.text);
+
+          const text = textParts.join("\n") || JSON.stringify(result.content);
+          span.setAttribute("mcp.tool.result_length", text.length);
+          return text;
+        }
+      )
+    );
+  } catch (err) {
+    // If the call failed due to a connection issue, trigger background reconnection
+    const config = serverConfigs.find((c) => c.id === serverId);
+    if (config && !server.reconnecting) {
+      logInfo(`Tool call failed for ${name}, triggering reconnection for server ${serverId}`);
+      reconnectServer(config).catch(() => {}); // fire-and-forget
     }
-  );
+    throw err;
+  }
 }
 
 /**
@@ -187,12 +294,17 @@ export async function refreshTools(): Promise<void> {
   }
 }
 
+/** Return all registered MCP tool names (for admin UI) */
+export function getToolNames(): string[] {
+  return Array.from(toolToServer.keys()).sort();
+}
+
 export async function disconnectMCP(): Promise<void> {
   for (const server of servers.values()) {
     try {
       await server.client.close();
-    } catch {
-      // Ignore close errors during shutdown
+    } catch (err) {
+      logError(`MCP server close error: ${server.id}`, err instanceof Error ? err : new Error(String(err)));
     }
   }
   servers.clear();
