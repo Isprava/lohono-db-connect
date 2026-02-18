@@ -3,12 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build tools for native modules (OpenTelemetry, etc.)
-RUN apk add --no-cache python3 make g++
-
 # Install dependencies first (layer caching)
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 
 # Copy source and build
 COPY tsconfig.json ./
@@ -23,7 +20,7 @@ WORKDIR /app
 
 # Install production dependencies only
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist

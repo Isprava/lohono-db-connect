@@ -16,6 +16,8 @@ export interface CircuitBreakerOptions {
   failureThreshold?: number;
   /** Time in ms the circuit stays open before probing (default: 30000) */
   resetTimeoutMs?: number;
+  /** If provided, errors matching this predicate are re-thrown but do NOT count as failures */
+  isTransient?: (err: unknown) => boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export class CircuitBreaker {
   readonly name: string;
   private readonly failureThreshold: number;
   private readonly resetTimeoutMs: number;
+  private readonly isTransient: ((err: unknown) => boolean) | undefined;
 
   private state: CircuitState = "closed";
   private consecutiveFailures = 0;
@@ -38,6 +41,7 @@ export class CircuitBreaker {
     this.name = opts.name;
     this.failureThreshold = opts.failureThreshold ?? 5;
     this.resetTimeoutMs = opts.resetTimeoutMs ?? 30_000;
+    this.isTransient = opts.isTransient;
   }
 
   getState(): CircuitState {
@@ -70,6 +74,10 @@ export class CircuitBreaker {
       this.onSuccess();
       return result;
     } catch (error) {
+      // Transient errors are re-thrown but don't count toward the circuit
+      if (this.isTransient?.(error)) {
+        throw error;
+      }
       this.onFailure();
       throw error;
     }

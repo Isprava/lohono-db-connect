@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getToolsForClaude, getToolsForUser, callTool } from "./mcp-bridge.js";
+import { getToolsForClaude, callTool } from "./mcp-bridge.js";
+import { checkUserToolAccess } from "./acl.js";
 import {
   appendMessage,
   getMessages,
@@ -220,6 +221,11 @@ const claudeCircuitBreaker = new CircuitBreaker({
   name: "claude-api",
   failureThreshold: 3,
   resetTimeoutMs: 60_000, // 60s — API is expensive, give it time
+  isTransient: (err: unknown) => {
+    // Don't trip the circuit breaker for transient API errors (overloaded, rate limited)
+    const msg = err instanceof Error ? err.message : String(err);
+    return /overloaded_error|rate_limit_error|529|529/.test(msg);
+  },
 });
 
 /** Get the current Claude API circuit breaker state for health checks */
@@ -265,6 +271,7 @@ function getClient(): Anthropic {
   if (!anthropic) {
     anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
+      maxRetries: 4,
     });
   }
   return anthropic;
@@ -374,7 +381,8 @@ export async function chat(
   vertical?: Vertical
 ): Promise<ChatResult> {
   const client = getClient();
-  const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
+  // Always show ALL tools to Claude — ACL enforcement happens before each tool call
+  const tools = getToolsForClaude();
 
   // ── Response cache check ──────────────────────────────────────────────
   const cacheKey = responseCacheKey(userMessage, vertical);
@@ -476,43 +484,50 @@ export async function chat(
     // 4. Execute each tool call via MCP and collect results
     for (const tu of toolUseBlocks) {
       let resultText: string;
-      try {
-        // Inject vertical parameter for sales funnel tools if vertical is provided
-        const toolInput = tu.input as Record<string, unknown>;
-        const isSalesFunnelTool = [
-          'get_sales_funnel',
-          'get_leads',
-          'get_prospects',
-          'get_accounts',
-          'get_sales'
-        ].includes(tu.name);
 
-        let finalInput = { ...toolInput };
+      // ── ACL check before calling the tool ──────────────────────────────
+      const aclResult = await checkUserToolAccess(tu.name, userEmail);
+      if (!aclResult.allowed) {
+        resultText = aclResult.reason;
+      } else {
+        try {
+          // Inject vertical parameter for sales funnel tools if vertical is provided
+          const toolInput = tu.input as Record<string, unknown>;
+          const isSalesFunnelTool = [
+            'get_sales_funnel',
+            'get_leads',
+            'get_prospects',
+            'get_accounts',
+            'get_sales'
+          ].includes(tu.name);
 
-        // 1. Resolve locations if present (Client-Side Resolution)
-        if (finalInput.locations && Array.isArray(finalInput.locations)) {
-          const rawLocations = finalInput.locations as string[];
-          const canonicalLocations = resolveLocations(rawLocations);
-          finalInput.locations = canonicalLocations;
-          logInfo(`Resolved locations: ${JSON.stringify(rawLocations)} -> ${JSON.stringify(canonicalLocations)}`);
+          let finalInput = { ...toolInput };
+
+          // 1. Resolve locations if present (Client-Side Resolution)
+          if (finalInput.locations && Array.isArray(finalInput.locations)) {
+            const rawLocations = finalInput.locations as string[];
+            const canonicalLocations = resolveLocations(rawLocations);
+            finalInput.locations = canonicalLocations;
+            logInfo(`Resolved locations: ${JSON.stringify(rawLocations)} -> ${JSON.stringify(canonicalLocations)}`);
+          }
+
+          // 2. Inject vertical if needed
+          if (vertical && isSalesFunnelTool) {
+            finalInput = { ...finalInput, vertical };
+          }
+
+          resultText = await callTool(
+            tu.name,
+            finalInput,
+            userEmail
+          );
+        } catch (err) {
+          logError(`Tool call "${tu.name}" failed`, err instanceof Error ? err : new Error(String(err)), {
+            sessionId,
+            tool: tu.name,
+          });
+          resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
         }
-
-        // 2. Inject vertical if needed
-        if (vertical && isSalesFunnelTool) {
-          finalInput = { ...finalInput, vertical };
-        }
-
-        resultText = await callTool(
-          tu.name,
-          finalInput,
-          userEmail
-        );
-      } catch (err) {
-        logError(`Tool call "${tu.name}" failed`, err instanceof Error ? err : new Error(String(err)), {
-          sessionId,
-          tool: tu.name,
-        });
-        resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
       }
 
       toolCalls.push({
@@ -555,8 +570,10 @@ export async function chat(
   }
 
   // ── Cache the response for future identical questions ─────────────────
+  // Only cache if tools were actually called — a response with no tool calls
+  // is likely a fallback/error (e.g. MCP bridge timeout) and should not be cached.
   const result: ChatResult = { assistantText: finalText, toolCalls };
-  if (finalText) {
+  if (finalText && toolCalls.length > 0) {
     const ttl = detectResponseTTL(userMessage);
     await responseCache.set(cacheKey, result, ttl);
     logInfo(`Response cached (TTL ${ttl}s): ${cacheKey}`);
@@ -574,7 +591,8 @@ export async function* chatStream(
   vertical?: Vertical
 ): AsyncGenerator<StreamEvent> {
   const client = getClient();
-  const tools = userEmail ? await getToolsForUser(userEmail) : getToolsForClaude();
+  // Always show ALL tools to Claude — ACL enforcement happens before each tool call
+  const tools = getToolsForClaude();
 
   // ── Response cache check ──────────────────────────────────────────────
   const cacheKey = responseCacheKey(userMessage, vertical);
@@ -605,6 +623,7 @@ export async function* chatStream(
   let claudeMessages = dbMessagesToClaudeMessages(dbMsgs);
 
   let finalText = "";
+  let toolCallCount = 0;
   const debugEntries: DebugEntry[] = [];
 
   // 3. Agentic loop
@@ -687,21 +706,53 @@ export async function* chatStream(
 
     // 4. Execute tool calls
     for (const tu of parsedToolBlocks) {
+      toolCallCount++;
       yield { event: "tool_start" as const, data: { name: tu.name, id: tu.id } };
 
       let resultText: string;
-      try {
-        resultText = await callTool(
-          tu.name,
-          tu.input as Record<string, unknown>,
-          userEmail
-        );
-      } catch (err) {
-        logError(`Tool call "${tu.name}" failed`, err instanceof Error ? err : new Error(String(err)), {
-          sessionId,
-          tool: tu.name,
-        });
-        resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+
+      // ── ACL check before calling the tool ──────────────────────────────
+      const aclResult = await checkUserToolAccess(tu.name, userEmail);
+      if (!aclResult.allowed) {
+        resultText = aclResult.reason;
+      } else {
+        try {
+          const toolInput = tu.input as Record<string, unknown>;
+          const isSalesFunnelTool = [
+            'get_sales_funnel',
+            'get_leads',
+            'get_prospects',
+            'get_accounts',
+            'get_sales'
+          ].includes(tu.name);
+
+          let finalInput = { ...toolInput };
+
+          // Resolve locations if present (Client-Side Resolution)
+          if (finalInput.locations && Array.isArray(finalInput.locations)) {
+            const rawLocations = finalInput.locations as string[];
+            const canonicalLocations = resolveLocations(rawLocations);
+            finalInput.locations = canonicalLocations;
+            logInfo(`Resolved locations: ${JSON.stringify(rawLocations)} -> ${JSON.stringify(canonicalLocations)}`);
+          }
+
+          // Inject vertical if needed
+          if (vertical && isSalesFunnelTool) {
+            finalInput = { ...finalInput, vertical };
+          }
+
+          resultText = await callTool(
+            tu.name,
+            finalInput,
+            userEmail
+          );
+        } catch (err) {
+          logError(`Tool call "${tu.name}" failed`, err instanceof Error ? err : new Error(String(err)), {
+            sessionId,
+            tool: tu.name,
+          });
+          resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+        }
       }
 
       // Extract debug info from tool result if DEBUG_MODE is on
@@ -739,7 +790,9 @@ export async function* chatStream(
   }
 
   // ── Cache the response for future identical questions ─────────────────
-  if (finalText) {
+  // Only cache if tools were actually called — a response with no tool calls
+  // is likely a fallback/error (e.g. MCP bridge timeout) and should not be cached.
+  if (finalText && toolCallCount > 0) {
     const ttl = detectResponseTTL(userMessage);
     await responseCache.set(cacheKey, { assistantText: finalText, toolCalls: [] }, ttl);
     logInfo(`Response cached (stream, TTL ${ttl}s): ${cacheKey}`);

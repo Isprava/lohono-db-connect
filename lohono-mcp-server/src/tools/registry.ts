@@ -1,7 +1,5 @@
 import { z } from "zod";
 import { logger } from "../../../shared/observability/src/logger.js";
-import { checkToolAccess } from "../acl.js";
-import { pool } from "../db/pool.js";
 import type { ToolPlugin, ToolResult, ToolDefinition } from "./types.js";
 
 // ── Plugin registry ─────────────────────────────────────────────────────────
@@ -26,28 +24,18 @@ export function getToolDefinitions(): ToolDefinition[] {
   return [...plugins.values()].map((p) => p.definition);
 }
 
-/** Dispatch a tool call to the correct plugin handler (with ACL check) */
+/** Dispatch a tool call to the correct plugin handler. ACL enforcement happens on the MCP Client side. */
 export async function handleToolCall(
   name: string,
   args: Record<string, unknown> | undefined,
-  userEmail?: string
 ): Promise<ToolResult> {
   try {
-    // ACL enforcement
-    const aclResult = await checkToolAccess(name, userEmail, pool);
-    if (!aclResult.allowed) {
-      return {
-        content: [{ type: "text", text: `Access denied: ${aclResult.reason}` }],
-        isError: true,
-      };
-    }
-
     const plugin = plugins.get(name);
     if (!plugin) {
       throw new Error(`Unknown tool: ${name}`);
     }
 
-    return await plugin.handler(args, userEmail);
+    return await plugin.handler(args);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return {
@@ -59,7 +47,7 @@ export async function handleToolCall(
       };
     }
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Tool "${name}" failed`, { error: message, tool: name, userEmail });
+    logger.error(`Tool "${name}" failed`, { error: message, tool: name });
     return {
       content: [{ type: "text", text: `Error: ${message}` }],
       isError: true,

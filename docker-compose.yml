@@ -48,7 +48,6 @@ services:
       DB_NAME: ${DB_NAME}
       REDASH_URL: ${REDASH_URL:-}
       REDASH_API_KEY: ${REDASH_API_KEY:-}
-      ACL_CONFIG_PATH: /app/database/schema/acl.yml
       DATABASE_DIR: /app/database
       MCP_USER_EMAIL: ${MCP_USER_EMAIL:-}
       SALES_FUNNEL_RULES_PATH: /app/database/schema/sales_funnel_rules_v2.yml
@@ -60,6 +59,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
       TZ: Asia/Kolkata
     ports:
       - "${MCP_PORT:-3000}:3000"
@@ -92,6 +92,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
       TZ: Asia/Kolkata
     ports:
       - "${HELPDESK_PORT:-3002}:3002"
@@ -139,6 +140,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
       TZ: Asia/Kolkata
     ports:
       - "${CLIENT_PORT:-3001}:3001"

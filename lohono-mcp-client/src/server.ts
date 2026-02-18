@@ -7,13 +7,21 @@ import {
   listSessions,
   deleteSession,
   getMessages,
+  getAllToolAcls,
+  upsertToolAcls,
+  deleteToolAcl,
+  getToolAclsMap,
+  getGlobalAclConfig,
+  upsertGlobalAclConfig,
+  getGlobalAclConfigForRedis,
 } from "./db.js";
 import { chat, chatStream, getClaudeCircuitState } from "./agent.js";
-import { getMcpCircuitStates } from "./mcp-bridge.js";
+import { getMcpCircuitStates, getToolNames } from "./mcp-bridge.js";
 import {
   authenticateGoogleUser,
   validateSession,
   deleteSessionByToken,
+  getPgPool,
   type UserPublic,
 } from "./auth.js";
 import {
@@ -23,6 +31,7 @@ import {
   logError,
 } from "../../shared/observability/src/index.js";
 import { Vertical, isValidVertical } from "../../shared/types/verticals.js";
+import { RedisCache } from "../../shared/redis/src/index.js";
 
 // ── Extend Express Request ─────────────────────────────────────────────────
 
@@ -31,9 +40,19 @@ declare global {
     interface Request {
       user?: UserPublic;
       authToken?: string;
+      isAdmin?: boolean;
     }
   }
 }
+
+// ── Redis caches for ACL config (synced to MCP Server) ──────────────────────
+
+const aclToolConfigCache = new RedisCache<Record<string, string[]>>("acl:tool_config", 0);
+const aclGlobalConfigCache = new RedisCache<{
+  default_policy: "open" | "deny";
+  public_tools: string[];
+  disabled_tools: string[];
+}>("acl:global_config", 0);
 
 // ── Express app ────────────────────────────────────────────────────────────
 
@@ -74,7 +93,8 @@ async function authMiddleware(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  if (req.path.startsWith("/api/auth/") || req.path === "/api/health") {
+  const publicPaths = ["/api/auth/google", "/api/auth/logout", "/api/health"];
+  if (publicPaths.includes(req.path)) {
     next();
     return;
   }
@@ -123,7 +143,28 @@ app.get("/api/auth/me", async (req: Request, res: Response) => {
       res.status(401).json({ error: "Not authenticated" });
       return;
     }
-    res.json(req.user);
+    // Check if user is admin (role_id = 1)
+    let isAdmin = false;
+    try {
+      const pool = getPgPool();
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN TRANSACTION READ ONLY");
+        const result = await client.query(
+          `SELECT role_id FROM public.staffs WHERE LOWER(email) = $1 LIMIT 1`,
+          [req.user.email.toLowerCase()]
+        );
+        await client.query("COMMIT");
+        if (result.rows.length > 0 && result.rows[0].role_id === 1) {
+          isAdmin = true;
+        }
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logError("Failed to check admin role", err instanceof Error ? err : new Error(String(err)));
+    }
+    res.json({ ...req.user, isAdmin });
   } catch (err) {
     logError("GET /api/auth/me failed", err instanceof Error ? err : new Error(String(err)));
     res.status(500).json({ error: "Failed to get profile" });
@@ -262,13 +303,213 @@ app.get("/api/sessions/:id/messages/stream", chatLimiter, async (req: Request, r
     }
   } catch (err) {
     logError("GET /api/sessions/:id/messages/stream failed", err instanceof Error ? err : new Error(String(err)), { sessionId: req.params.id });
-    // If headers already sent, we can't send JSON error
+
+    // Parse a user-friendly error message
+    let userMessage = "Something went wrong. Please try again.";
+    try {
+      const raw = err instanceof Error ? err.message : String(err);
+      const parsed = JSON.parse(raw);
+      if (parsed?.error?.type === "overloaded_error") {
+        userMessage = "The AI service is currently busy. Please wait a moment and try again.";
+      } else if (parsed?.error?.type === "rate_limit_error") {
+        userMessage = "Too many requests. Please wait a moment and try again.";
+      } else if (parsed?.error?.message) {
+        userMessage = parsed.error.message;
+      }
+    } catch {
+      // Not JSON — use default message
+    }
+
     if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to process message" });
+      res.status(500).json({ error: userMessage });
     } else {
-      res.write(`data: ${JSON.stringify({ event: "error", data: { message: "Internal server error" } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ event: "error", data: { message: userMessage } })}\n\n`);
       res.end();
     }
+  }
+});
+
+// ── Admin middleware (role_id = 1) ─────────────────────────────────────────
+
+async function adminMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: "Authorization required" });
+    return;
+  }
+
+  try {
+    const pool = getPgPool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN TRANSACTION READ ONLY");
+      const result = await client.query(
+        `SELECT role_id FROM public.staffs WHERE LOWER(email) = $1 LIMIT 1`,
+        [req.user.email.toLowerCase()]
+      );
+      await client.query("COMMIT");
+
+      if (result.rows.length === 0 || result.rows[0].role_id !== 1) {
+        res.status(403).json({ error: "Admin access required" });
+        return;
+      }
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logError("Admin middleware failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to verify admin access" });
+    return;
+  }
+
+  req.isAdmin = true;
+  next();
+}
+
+/** Sync the full ACL config (global + tool_acls) from MongoDB to Redis */
+async function syncAclToRedis(): Promise<void> {
+  try {
+    const [toolAclsMap, globalConfig] = await Promise.all([
+      getToolAclsMap(),
+      getGlobalAclConfigForRedis(),
+    ]);
+    await Promise.all([
+      aclToolConfigCache.set("current", toolAclsMap),
+      aclGlobalConfigCache.set("current", globalConfig),
+    ]);
+    logInfo("ACL config synced to Redis", { tool_count: String(Object.keys(toolAclsMap).length) });
+  } catch (err) {
+    logError("Failed to sync ACL to Redis", err instanceof Error ? err : new Error(String(err)));
+  }
+}
+
+// ── Admin: ACL Management ─────────────────────────────────────────────────
+
+/** List all tool ACL configs from MongoDB */
+app.get("/api/admin/acl/tools", adminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const configs = await getAllToolAcls();
+    res.json(configs);
+  } catch (err) {
+    logError("GET /api/admin/acl/tools failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to list ACL configs" });
+  }
+});
+
+/** Upsert ACLs for a tool */
+app.put("/api/admin/acl/tools/:toolName", adminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const toolName = req.params.toolName as string;
+    const { acls } = req.body ?? {};
+    if (!Array.isArray(acls) || !acls.every((a: unknown) => typeof a === "string")) {
+      res.status(400).json({ error: '"acls" must be an array of strings' });
+      return;
+    }
+    const config = await upsertToolAcls(toolName, acls, req.user!.email);
+    await syncAclToRedis();
+    res.json(config);
+  } catch (err) {
+    logError("PUT /api/admin/acl/tools/:toolName failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to update ACL config" });
+  }
+});
+
+/** Delete ACL config for a tool */
+app.delete("/api/admin/acl/tools/:toolName", adminMiddleware, async (req: Request, res: Response) => {
+  try {
+    await deleteToolAcl(req.params.toolName as string);
+    await syncAclToRedis();
+    res.json({ ok: true });
+  } catch (err) {
+    logError("DELETE /api/admin/acl/tools/:toolName failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to delete ACL config" });
+  }
+});
+
+/** Get global ACL config (policy, public/disabled tools) */
+app.get("/api/admin/acl/global", adminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const config = await getGlobalAclConfig();
+    res.json(config);
+  } catch (err) {
+    logError("GET /api/admin/acl/global failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to get global ACL config" });
+  }
+});
+
+/** Update global ACL config */
+app.put("/api/admin/acl/global", adminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { default_policy, public_tools, disabled_tools } = req.body ?? {};
+    if (default_policy && !["open", "deny"].includes(default_policy)) {
+      res.status(400).json({ error: '"default_policy" must be "open" or "deny"' });
+      return;
+    }
+    if (public_tools && (!Array.isArray(public_tools) || !public_tools.every((a: unknown) => typeof a === "string"))) {
+      res.status(400).json({ error: '"public_tools" must be an array of strings' });
+      return;
+    }
+    if (disabled_tools && (!Array.isArray(disabled_tools) || !disabled_tools.every((a: unknown) => typeof a === "string"))) {
+      res.status(400).json({ error: '"disabled_tools" must be an array of strings' });
+      return;
+    }
+
+    // Merge with existing config so partial updates work
+    const existing = await getGlobalAclConfig();
+    const config = await upsertGlobalAclConfig({
+      default_policy: default_policy ?? existing.default_policy,
+      public_tools: public_tools ?? existing.public_tools,
+      disabled_tools: disabled_tools ?? existing.disabled_tools,
+    }, req.user!.email);
+    await syncAclToRedis();
+    res.json(config);
+  } catch (err) {
+    logError("PUT /api/admin/acl/global failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to update global ACL config" });
+  }
+});
+
+/** List all available ACL names from constant_mappings (ACL_CONSTANTS) */
+app.get("/api/admin/acl/available-acls", adminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const pool = getPgPool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN TRANSACTION READ ONLY");
+      const result = await client.query(
+        `SELECT value FROM public.constant_mappings WHERE name = 'ACL_CONSTANTS' LIMIT 1`
+      );
+      await client.query("COMMIT");
+      if (result.rows.length === 0 || !result.rows[0].value) {
+        res.json([]);
+        return;
+      }
+      const acls = (result.rows[0].value as string)
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+        .sort();
+      res.json(acls);
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logError("GET /api/admin/acl/available-acls failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to list available ACLs" });
+  }
+});
+
+/** List all registered MCP tool names */
+app.get("/api/admin/acl/available-tools", adminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const tools = getToolNames();
+    res.json(tools);
+  } catch (err) {
+    logError("GET /api/admin/acl/available-tools failed", err instanceof Error ? err : new Error(String(err)));
+    res.status(500).json({ error: "Failed to list available tools" });
   }
 });
 

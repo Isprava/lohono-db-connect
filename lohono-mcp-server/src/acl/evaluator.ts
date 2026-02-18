@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { loadAclConfig } from "./config.js";
+import { getEffectiveAclConfig } from "./config.js";
 import { resolveUserAcls } from "./user-cache.js";
 import type { AclCheckResult } from "./types.js";
 
@@ -11,9 +11,9 @@ export async function checkToolAccess(
   userEmail: string | undefined,
   pool: pg.Pool
 ): Promise<AclCheckResult> {
-  const config = loadAclConfig();
+  const config = await getEffectiveAclConfig();
 
-  // 1. Disabled tool — blocked for everyone (including superusers)
+  // 1. Disabled tool — blocked for everyone
   if (config.disabled_tools.includes(toolName)) {
     return {
       allowed: false,
@@ -22,8 +22,9 @@ export async function checkToolAccess(
     };
   }
 
-  // 2. Public tool — no auth needed
-  if (config.public_tools.includes(toolName)) {
+  // 2. Public tool — no auth needed, UNLESS it has explicit tool_acls
+  //    (tool_acls from YAML or Admin UI override public_tools status)
+  if (config.public_tools.includes(toolName) && !config.tool_acls[toolName]) {
     return { allowed: true, reason: "Public tool", user_email: userEmail };
   }
 
@@ -56,18 +57,7 @@ export async function checkToolAccess(
     };
   }
 
-  // 5. Superuser check (but disabled_tools still blocked)
-  const hasSuperuser = user.acls.some((a) => config.superuser_acls.includes(a));
-  if (hasSuperuser) {
-    return {
-      allowed: true,
-      reason: "Superuser access",
-      user_email: userEmail,
-      user_acls: user.acls,
-    };
-  }
-
-  // 6. Per-tool ACL check
+  // 5. Per-tool ACL check
   const requiredAcls = config.tool_acls[toolName];
 
   if (!requiredAcls) {
@@ -116,32 +106,33 @@ export async function filterToolsByAccess(
   userEmail: string | undefined,
   pool: pg.Pool
 ): Promise<{ name: string; [key: string]: unknown }[]> {
-  const config = loadAclConfig();
+  const config = await getEffectiveAclConfig();
 
   // Filter out disabled tools first (no one can see them)
   const enabledTools = tools.filter((t) => !config.disabled_tools.includes(t.name));
 
-  // No email — return only public tools
+  // No email — return all enabled tools for discovery.
+  // ACL enforcement happens at CallTool time, so listing is permissive
+  // to allow the MCP bridge to discover available tools.
   if (!userEmail) {
-    return enabledTools.filter((t) => config.public_tools.includes(t.name));
+    return enabledTools;
   }
 
   // Resolve user
   const user = await resolveUserAcls(userEmail, pool);
 
   if (!user || !user.active) {
-    return enabledTools.filter((t) => config.public_tools.includes(t.name));
+    return enabledTools.filter(
+      (t) => config.public_tools.includes(t.name) && !config.tool_acls[t.name]
+    );
   }
-
-  // Superuser — all enabled tools (disabled tools still hidden)
-  const hasSuperuser = user.acls.some((a) => config.superuser_acls.includes(a));
-  if (hasSuperuser) return enabledTools;
 
   // Filter per-tool
   return enabledTools.filter((t) => {
-    if (config.public_tools.includes(t.name)) return true;
-
     const requiredAcls = config.tool_acls[t.name];
+
+    // Public tool without explicit tool_acls — allow
+    if (config.public_tools.includes(t.name) && !requiredAcls) return true;
     if (!requiredAcls) return config.default_policy === "open";
 
     return requiredAcls.some((required) => user.acls.includes(required));

@@ -294,6 +294,11 @@ export async function refreshTools(): Promise<void> {
   }
 }
 
+/** Return all registered MCP tool names (for admin UI) */
+export function getToolNames(): string[] {
+  return Array.from(toolToServer.keys()).sort();
+}
+
 export async function disconnectMCP(): Promise<void> {
   for (const server of servers.values()) {
     try {

@@ -9,7 +9,7 @@
 export type { AclConfig, AclCheckResult } from "./acl/types.js";
 
 // Config loading
-export { loadAclConfig, reloadAclConfig } from "./acl/config.js";
+export { getEffectiveAclConfig, clearAclConfigCache, disconnectAclMongo } from "./acl/config.js";
 
 // Email resolution
 export { resolveUserEmail } from "./acl/email-resolver.js";

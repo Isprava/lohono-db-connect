@@ -13,6 +13,7 @@ interface AuthState {
   user: UserPublic | null;
   token: string | null;
   loading: boolean;
+  isAdmin: boolean;
   loginWithGoogle: (userProfile: string) => Promise<void>;
   logout: () => void;
   /** Redirect to auth.lohono.com to start the OAuth flow */
@@ -29,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserPublic | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -36,7 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const savedUser = localStorage.getItem("user");
     if (savedToken && savedUser) {
       setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      const parsed = JSON.parse(savedUser);
+      setUser(parsed);
+      setIsAdmin(parsed.isAdmin === true);
       setLoading(false);
       // Refresh user profile in background; never clear the local
       // session here — individual API calls will handle 401 errors
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .me()
         .then((u) => {
           setUser(u);
+          setIsAdmin(u.isAdmin === true);
           localStorage.setItem("user", JSON.stringify(u));
         })
         .catch(() => {
@@ -63,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("user", JSON.stringify(result.user));
     setToken(result.token);
     setUser(result.user);
+    setIsAdmin(result.user.isAdmin === true);
   };
 
   const logout = async () => {
@@ -75,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
+    setIsAdmin(false);
   };
 
   const redirectToLogin = () => {
@@ -84,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, loginWithGoogle, logout, redirectToLogin }}
+      value={{ user, token, loading, isAdmin, loginWithGoogle, logout, redirectToLogin }}
     >
       {children}
     </AuthContext.Provider>

@@ -51,6 +51,10 @@ export function initPgPool(pool: pg.Pool): void {
   pgPool = pool;
 }
 
+export function getPgPool(): pg.Pool {
+  return pgPool;
+}
+
 // ── Google auth ────────────────────────────────────────────────────────────
 
 /**

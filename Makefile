@@ -263,6 +263,14 @@ deploy-all: env obs-network ## Deploy app + observability (production)
 	$(COMPOSE) ps
 	$(COMPOSE_OBS) ps
 
+# ── Redis ─────────────────────────────────────────────────────────────
+
+.PHONY: redis-flush
+redis-flush: ## Flush Redis cache and restart all services
+	$(COMPOSE) exec redis redis-cli FLUSHALL
+	$(COMPOSE) restart
+	@echo "Redis cache flushed and all services restarted."
+
 # ── Cleanup ───────────────────────────────────────────────────────────────
 
 .PHONY: clean

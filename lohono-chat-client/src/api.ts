@@ -28,9 +28,12 @@ async function request<T>(
     if (!skipAuthRedirect) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/auth/callback";
     }
     throw new Error("Unauthorized");
+  }
+
+  if (res.status === 403) {
+    throw new Error("Access denied: You do not have permission to perform this action. Please contact your administrator.");
   }
 
   const data = await res.json();
@@ -47,6 +50,7 @@ export interface UserPublic {
   email: string;
   name: string;
   picture: string;
+  isAdmin?: boolean;
 }
 
 export interface AuthResponse {
@@ -147,8 +151,11 @@ export const sessions = {
     if (res.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/auth/callback";
       throw new Error("Unauthorized");
+    }
+
+    if (res.status === 403) {
+      throw new Error("Access denied: You do not have permission to perform this action. Please contact your administrator.");
     }
 
     if (!res.ok) {
@@ -201,4 +208,42 @@ export const sessions = {
       }
     }
   },
+};
+
+// ── Admin: ACL Management ─────────────────────────────────────────────────
+
+export interface AclToolConfig {
+  toolName: string;
+  acls: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface AclGlobalConfig {
+  default_policy: "open" | "deny";
+  public_tools: string[];
+  disabled_tools: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export const admin = {
+  listToolAcls: () => request<AclToolConfig[]>("/admin/acl/tools"),
+  upsertToolAcl: (toolName: string, acls: string[]) =>
+    request<AclToolConfig>(`/admin/acl/tools/${encodeURIComponent(toolName)}`, {
+      method: "PUT",
+      body: JSON.stringify({ acls }),
+    }),
+  deleteToolAcl: (toolName: string) =>
+    request<{ ok: boolean }>(`/admin/acl/tools/${encodeURIComponent(toolName)}`, {
+      method: "DELETE",
+    }),
+  getAvailableAcls: () => request<string[]>("/admin/acl/available-acls"),
+  getAvailableTools: () => request<string[]>("/admin/acl/available-tools"),
+  getGlobalConfig: () => request<AclGlobalConfig>("/admin/acl/global"),
+  updateGlobalConfig: (config: Partial<Pick<AclGlobalConfig, "default_policy" | "public_tools" | "disabled_tools">>) =>
+    request<AclGlobalConfig>("/admin/acl/global", {
+      method: "PUT",
+      body: JSON.stringify(config),
+    }),
 };
