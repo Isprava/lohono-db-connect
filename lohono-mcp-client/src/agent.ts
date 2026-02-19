@@ -456,7 +456,7 @@ export async function chat(
           const resp = await client.messages.create({
             model: getModel(),
             max_tokens: 8192,
-            system: SYSTEM_PROMPT,
+            system: buildSystemPrompt(),
             tools,
             messages: claudeMessages,
           });
@@ -661,7 +661,7 @@ export async function* chatStream(
       client.messages.create({
         model: getModel(),
         max_tokens: 8192,
-        system: SYSTEM_PROMPT,
+        system: buildSystemPrompt(),
         tools,
         messages: claudeMessages,
         stream: true,
