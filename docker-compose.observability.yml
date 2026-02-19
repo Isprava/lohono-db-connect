@@ -18,12 +18,14 @@ services:
     restart: unless-stopped
     volumes:
       - signoz-clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse-config/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./clickhouse-config/users.xml:/etc/clickhouse-server/users.xml:ro
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -31,73 +33,76 @@ services:
     environment:
       TZ: Asia/Kolkata
 
-  # ── SigNoz OTel Collector (internal — receives from app collector) ─────
-  signoz-otel-collector:
-    image: signoz/signoz-otel-collector:0.102.12
-    container_name: signoz-otel-collector
-    restart: unless-stopped
-    command:
-      - "--config=/etc/otel-collector-config.yaml"
-      - "--manager-config=/etc/manager-config.yaml"
-      - "--copy-to-container-only"
-      - "--feature-gates=-pkg.translator.prometheus.NormalizeName"
-    volumes:
-      - ./signoz/otel-collector-config.yaml:/etc/otel-collector-config.yaml
-      - ./signoz/manager-config.yaml:/etc/manager-config.yaml
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    environment:
-      TZ: Asia/Kolkata
-      SIGNOZ_COMPONENT: otel-collector
-
-  # ── SigNoz Schema Migrator ─────────────────────────────────────────────
+  # ── Schema Migrator (creates ClickHouse tables, runs once) ─────────────
   schema-migrator:
-    image: signoz/signoz-schema-migrator:0.102.12
+    image: signoz/signoz-schema-migrator:0.111.24
     container_name: signoz-schema-migrator
     command:
-      - "--dsn=tcp://clickhouse:9000"
+      - sync
+      - --dsn=tcp://clickhouse:9000
+      - --up=
     depends_on:
       clickhouse:
         condition: service_healthy
+    restart: on-failure
+    environment:
+      TZ: Asia/Kolkata
 
-  # ── SigNoz Query Service (API backend) ─────────────────────────────────
-  signoz-query-service:
-    image: signoz/query-service:0.102.12
-    container_name: signoz-query-service
+  # ── SigNoz (query service + frontend) ──────────────────────────────────
+  signoz:
+    image: signoz/signoz:v0.111.0
+    container_name: signoz
     restart: unless-stopped
-    command:
-      - "-config=/root/config/prometheus.yml"
-      - "--prefer-delta=true"
-    volumes:
-      - ./signoz/prometheus.yml:/root/config/prometheus.yml
-      - signoz-query-service-data:/var/lib/signoz
     depends_on:
       clickhouse:
         condition: service_healthy
       schema-migrator:
         condition: service_completed_successfully
+    ports:
+      - "${SIGNOZ_PORT:-3301}:8080"
+    volumes:
+      - signoz-data:/var/lib/signoz
     environment:
-      ClickHouseUrl: tcp://clickhouse:9000
+      SIGNOZ_CLICKHOUSE_HOST: clickhouse
+      SIGNOZ_CLICKHOUSE_PORT: 9000
       STORAGE: clickhouse
       GODEBUG: netdns=go
       TELEMETRY_ENABLED: "true"
       DEPLOYMENT_TYPE: docker-standalone-amd
       TZ: Asia/Kolkata
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
-  # ── SigNoz Frontend (React UI) ─────────────────────────────────────────
-  signoz-frontend:
-    image: signoz/frontend:0.102.12
-    container_name: signoz-frontend
+  # ── SigNoz OTel Collector (receives OTLP, writes to ClickHouse) ───────
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:0.111.24
+    container_name: signoz-otel-collector
     restart: unless-stopped
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
     depends_on:
-      signoz-query-service:
-        condition: service_started
-    ports:
-      - "${SIGNOZ_PORT:-3301}:3301"
+      clickhouse:
+        condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully
+      signoz:
+        condition: service_healthy
+    volumes:
+      - ./signoz-otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     environment:
-      FRONTEND_API_ENDPOINT: http://signoz-query-service:8080
+      OTEL_RESOURCE_ATTRIBUTES: host.name=signoz-otel-collector,os.type=linux
+      LOW_CARDINAL_EXCEPTION_GROUPING: "false"
       TZ: Asia/Kolkata
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # ── Application OTel Collector (receives from app services) ────────────
   otel-collector:
@@ -109,11 +114,10 @@ services:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     depends_on:
       signoz-otel-collector:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"    # OTLP gRPC
       - "${OTEL_HTTP_PORT:-4318}:4318"    # OTLP HTTP
-      - "13133:13133"                      # Health check
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
       interval: 15s
@@ -126,7 +130,7 @@ services:
 volumes:
   signoz-clickhouse-data:
     driver: local
-  signoz-query-service-data:
+  signoz-data:
     driver: local
 
 networks:

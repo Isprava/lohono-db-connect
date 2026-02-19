@@ -415,6 +415,7 @@ export async function chat(
   const toolCalls: ChatResult["toolCalls"] = [];
   const debugEntries: DebugEntry[] = [];
   let finalText = "";
+  let toolCallErrored = false;
 
   // 3. Agentic loop
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -527,6 +528,7 @@ export async function chat(
             tool: tu.name,
           });
           resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+          toolCallErrored = true;
         }
       }
 
@@ -570,10 +572,10 @@ export async function chat(
   }
 
   // ── Cache the response for future identical questions ─────────────────
-  // Only cache if tools were actually called — a response with no tool calls
-  // is likely a fallback/error (e.g. MCP bridge timeout) and should not be cached.
+  // Only cache if tools were called successfully — skip caching when no tool calls
+  // happened (likely a fallback) or when any tool call errored (e.g. MCP timeout).
   const result: ChatResult = { assistantText: finalText, toolCalls };
-  if (finalText && toolCalls.length > 0) {
+  if (finalText && toolCalls.length > 0 && !toolCallErrored) {
     const ttl = detectResponseTTL(userMessage);
     await responseCache.set(cacheKey, result, ttl);
     logInfo(`Response cached (TTL ${ttl}s): ${cacheKey}`);
@@ -624,6 +626,7 @@ export async function* chatStream(
 
   let finalText = "";
   let toolCallCount = 0;
+  let toolCallErrored = false;
   const debugEntries: DebugEntry[] = [];
 
   // 3. Agentic loop
@@ -752,6 +755,7 @@ export async function* chatStream(
             tool: tu.name,
           });
           resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+          toolCallErrored = true;
         }
       }
 
@@ -790,9 +794,9 @@ export async function* chatStream(
   }
 
   // ── Cache the response for future identical questions ─────────────────
-  // Only cache if tools were actually called — a response with no tool calls
-  // is likely a fallback/error (e.g. MCP bridge timeout) and should not be cached.
-  if (finalText && toolCallCount > 0) {
+  // Only cache if tools were called successfully — skip caching when no tool calls
+  // happened (likely a fallback) or when any tool call errored (e.g. MCP timeout).
+  if (finalText && toolCallCount > 0 && !toolCallErrored) {
     const ttl = detectResponseTTL(userMessage);
     await responseCache.set(cacheKey, { assistantText: finalText, toolCalls: [] }, ttl);
     logInfo(`Response cached (stream, TTL ${ttl}s): ${cacheKey}`);

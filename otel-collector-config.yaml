@@ -43,7 +43,7 @@ processors:
         action: upsert
 
 exporters:
-  # SigNoz backend (ClickHouse via OTel Collector's OTLP exporter)
+  # SigNoz OTel Collector (receives OTLP, writes to ClickHouse)
   otlp/signoz:
     endpoint: signoz-otel-collector:4317
     tls:

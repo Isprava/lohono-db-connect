@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ACL Configuration for MCP Tools
+#
+# Each tool maps to a list of ACL strings from staffs.acl_array.
+# Access is granted if the user has ANY of the listed ACLs (OR logic).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Policy when a tool is NOT listed in tool_acls:
+#   "open"  → allow any authenticated user (must exist in staffs + active)
+#   "deny"  → block unless explicitly listed
+default_policy: "open"
+
+# Tools that are completely disabled (no access for anyone)
+# Use this to prevent tools from being used even by superusers
+disabled_tools:
+  - query  # Disabled: Use specialized tools like get_sales_funnel instead
+
+# ACL values that grant access to ALL tools (bypass per-tool checks)
+superuser_acls:
+  - STAFF_EDIT
+
+# Tools that require NO authentication at all (completely open)
+# NOTE: If a tool also has entries in tool_acls (YAML or Admin UI), the
+#       tool_acls take precedence and the tool is NOT treated as public.
+public_tools:
+  - get_catalog_metadata
+  - get_tables_summary
+  - get_table_schema
+  - search_tables
+  - get_table_relationships
+  - get_schema_context
+  - find_tables_by_column
+  - get_relationship_chain
+
+# ── Per-tool ACL mappings ───────────────────────────────────────────────────
+# IMPORTANT: tool_acls are now managed ONLY via MongoDB (acl_configs collection).
+# Use the Admin UI or API endpoints to configure per-tool ACL requirements:
+#   - GET /api/admin/acl/tools - List all tool ACL configs
+#   - PUT /api/admin/acl/tools/:toolName - Update ACLs for a specific tool
+#   - DELETE /api/admin/acl/tools/:toolName - Remove ACL config for a tool
+#
+# The tool_acls section has been removed from this YAML file.
+# Only global settings (default_policy, superuser_acls, public_tools, disabled_tools)
+# are read from this file.

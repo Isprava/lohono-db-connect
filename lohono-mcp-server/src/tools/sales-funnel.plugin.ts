@@ -99,6 +99,10 @@ export const getSalesFunnelPlugin: ToolPlugin = {
     const metricKey = metric === "all" ? undefined : metric;
     const startTime = Date.now();
 
+    // Build query (needed for execution and debug info)
+    const query = buildSalesFunnelQuery(validVertical, locations, metricKey);
+    const allParams = [start_date, end_date, ...query.params];
+
     // Cache key
     const cacheKey = `funnel:${start_date}:${end_date}:${metric}:${validVertical}:${(locations || []).sort().join(",")}`;
     const cached = await queryCache.get(cacheKey);
@@ -113,6 +117,8 @@ export const getSalesFunnelPlugin: ToolPlugin = {
           tool: "get_sales_funnel",
           cacheHit: true,
           cacheKey,
+          sql: query.sql,
+          params: allParams,
           executionMs: Date.now() - startTime,
         };
       }
@@ -120,10 +126,6 @@ export const getSalesFunnelPlugin: ToolPlugin = {
         content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }],
       };
     }
-
-    // Build and execute query
-    const query = buildSalesFunnelQuery(validVertical, locations, metricKey);
-    const allParams = [start_date, end_date, ...query.params];
     const result = await executeReadOnlyQuery(query.sql, allParams);
 
     // Cache — historical date ranges get a 24h TTL, current month gets 60s

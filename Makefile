@@ -4,7 +4,6 @@
 
 COMPOSE       := docker compose
 COMPOSE_LOCAL := docker compose -f docker-compose.yml -f docker-compose.local.yml
-COMPOSE_OBS   := docker compose -f docker-compose.observability.yml
 SERVICES      := mongo mcp-server helpdesk-server mcp-client chat-client
 
 # Default env file
@@ -209,59 +208,32 @@ deploy: env ## Build and start all services (production)
 	@echo "  Client API:       http://localhost:$${CLIENT_PORT:-3001}"
 	@echo "  MCP Server:       http://localhost:$${MCP_PORT:-3000}"
 	@echo "  Helpdesk Server:  http://localhost:$${HELPDESK_PORT:-3002}"
+	@echo "  SigNoz UI:        http://localhost:$${SIGNOZ_PORT:-3301}"
+	@echo "  OTel Collector:   localhost:$${OTEL_GRPC_PORT:-4317}"
 	@echo ""
 	$(COMPOSE) ps
 
 # ── Observability (SigNoz + OpenTelemetry) ─────────────────────────────────
-
-.PHONY: obs-network
-obs-network: ## Create shared Docker network (run once)
-	@docker network inspect lohono-network >/dev/null 2>&1 || \
-		docker network create lohono-network
-	@echo "Network lohono-network ready."
-
-.PHONY: obs-up
-obs-up: env obs-network ## Start observability stack (SigNoz + OTel Collector)
-	$(COMPOSE_OBS) up -d --build
-	@echo ""
-	@echo "═══ Observability stack running ═══"
-	@echo "  SigNoz UI:        http://localhost:$${SIGNOZ_PORT:-3301}"
-	@echo "  OTel Collector:    localhost:$${OTEL_GRPC_PORT:-4317} (gRPC)"
-	@echo ""
-
-.PHONY: obs-down
-obs-down: ## Stop observability stack
-	$(COMPOSE_OBS) down
+# Observability services (ClickHouse, SigNoz, OTel Collector) are now part of
+# docker-compose.yml and start automatically with `make up-d`.
 
 .PHONY: obs-logs
-obs-logs: ## Tail observability stack logs
-	$(COMPOSE_OBS) logs -f
+obs-logs: ## Tail observability logs (ClickHouse, SigNoz, OTel)
+	$(COMPOSE) logs -f clickhouse schema-migrator signoz otel-collector
 
 .PHONY: obs-ps
 obs-ps: ## Show observability stack status
-	$(COMPOSE_OBS) ps
+	$(COMPOSE) ps clickhouse schema-migrator signoz otel-collector
 
 .PHONY: obs-clean
-obs-clean: ## Stop observability stack and remove volumes
-	$(COMPOSE_OBS) down --volumes --remove-orphans
-	@echo "Observability stack cleaned up."
+obs-clean: ## Remove observability volumes (ClickHouse + SigNoz data)
+	$(COMPOSE) stop clickhouse signoz otel-collector
+	$(COMPOSE) rm -f clickhouse schema-migrator signoz otel-collector
+	docker volume rm -f lohono-db-context_signoz-clickhouse-data lohono-db-context_signoz-data 2>/dev/null || true
+	@echo "Observability data cleaned up. Run 'make up-d' to recreate."
 
 .PHONY: deploy-all
-deploy-all: env obs-network ## Deploy app + observability (production)
-	@echo "═══ Deploying Lohono AI + Observability (production) ═══"
-	@echo "Using external DB at $${DB_HOST}:$${DB_PORT}"
-	$(COMPOSE_OBS) up -d --build
-	OTEL_SDK_DISABLED=false $(COMPOSE) up -d --build --remove-orphans
-	@echo ""
-	@echo "═══ Full deployment complete ═══"
-	@echo "  Web UI:         http://localhost:$${WEB_PORT:-8080}"
-	@echo "  Client API:     http://localhost:$${CLIENT_PORT:-3001}"
-	@echo "  MCP Server:     http://localhost:$${MCP_PORT:-3000}"
-	@echo "  SigNoz UI:      http://localhost:$${SIGNOZ_PORT:-3301}"
-	@echo "  OTel Collector:  localhost:$${OTEL_GRPC_PORT:-4317}"
-	@echo ""
-	$(COMPOSE) ps
-	$(COMPOSE_OBS) ps
+deploy-all: deploy ## Deploy app + observability (production, same as deploy)
 
 # ── Redis ─────────────────────────────────────────────────────────────
 
@@ -279,7 +251,7 @@ clean: ## Stop containers and remove images + volumes
 	@echo "Cleaned up containers, images, and volumes."
 
 .PHONY: clean-all
-clean-all: clean obs-clean ## Stop everything and remove all volumes
+clean-all: clean ## Stop everything and remove all volumes (including observability)
 	@echo "All stacks cleaned up."
 
 .PHONY: prune
