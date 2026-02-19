@@ -40,11 +40,33 @@ export function isValidVertical(value: unknown): value is Vertical {
 }
 
 /**
+ * Aliases that map informal/partial names to canonical vertical values.
+ * Used to normalise inputs before validation.
+ */
+const VERTICAL_ALIASES: Record<string, Vertical> = {
+    'chapter': Vertical.THE_CHAPTER,
+    'the chapter': Vertical.THE_CHAPTER,
+    'lohono': Vertical.LOHONO_STAYS,
+    'lohono stays': Vertical.LOHONO_STAYS,
+};
+
+/**
+ * Normalise a raw string to a canonical Vertical value, applying aliases.
+ */
+export function normalizeVertical(value: unknown): Vertical | undefined {
+    if (typeof value !== 'string') return undefined;
+    const lower = value.trim().toLowerCase();
+    if (VERTICAL_ALIASES[lower]) return VERTICAL_ALIASES[lower];
+    if (isValidVertical(value)) return value;
+    return undefined;
+}
+
+/**
  * Get a valid vertical or return the default
  * Useful for handling optional vertical parameters
  */
 export function getVerticalOrDefault(value: unknown): Vertical {
-    return isValidVertical(value) ? value : DEFAULT_VERTICAL;
+    return normalizeVertical(value) ?? DEFAULT_VERTICAL;
 }
 
 /**

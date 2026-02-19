@@ -48,43 +48,46 @@ function getLocationCondition(locations?: string[], tablePrefix: string = "devel
 
 // ── Stage type builders ──────────────────────────────────────────────────────
 
-/**
- * Build SQL for a multi_source stage (e.g. Leads = opportunities UNION enquiries).
- * Reads source_1_opportunities + source_2_enquiries from the stage config.
- */
-function buildMultiSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const slugExcl = getSlugExclusions(3);
-  const dnbExcl = getDnBExclusion(3 + slugExcl.params.length);
+// Build location condition - simpler ILIKE pattern matching user's query
+if (vertical == Vertical.THE_CHAPTER) {
+  return buildChapterLeadsQuery(locations);
+} else {
+  let oppsLocationCondition = "";
+  let enqLocationCondition = "";
 
-  // Source 1: development_opportunities
-  const src1 = stage.source_1_opportunities!;
-  const oppsLocationCondition = getLocationCondition(locations, src1.table, "interested_location");
+  if (locations && locations.length > 0) {
+    // For development_opportunities, search interested_location
+    const oppsLocConditions = locations.map(loc => `development_opportunities.interested_location ILIKE '%${loc}%'`).join(" OR ");
+    oppsLocationCondition = `AND (${oppsLocConditions})`;
 
+    // For enquiries, search locationgit config pull.rebase false 
+    const enqLocConditions = locations.map(loc => `location ILIKE '%${loc}%'`).join(" OR ");
+    enqLocationCondition = `AND (${enqLocConditions})`;
+  }
+
+  // 1. Opportunities Part - matching user's query format
   const oppsSql = `
-    SELECT ${src1.count_expression} AS leads
-    FROM ${src1.table}
-    WHERE (date(${src1.timestamp_column} + interval '330 minutes') BETWEEN $1 AND $2)
+    SELECT COUNT(DISTINCT(development_opportunities.slug)) AS leads
+    FROM development_opportunities
+    WHERE (date(enquired_at + interval '330 minutes') BETWEEN $1 AND $2)
     ${oppsLocationCondition}
     ${slugExcl.clause}
     ${dnbExcl.clause}
   `;
 
-  // Source 2: enquiries
-  const src2 = stage.source_2_enquiries!;
-  const enqLocationCondition = getLocationCondition(locations, src2.table, "location");
-  const enqConditions = (src2.mandatory_conditions || []).map(c => `AND ${c}`).join("\n    ");
-
+  // 2. Enquiries Part - matching user's query format
   const enqSql = `
-    SELECT ${src2.count_expression} AS leads
-    FROM ${src2.table}
-    WHERE (date(${src2.table}.${src2.timestamp_column} + interval '5 hours 30 minutes') BETWEEN $1 AND $2)
-    ${enqConditions}
+    SELECT COUNT(id) AS leads
+    FROM enquiries
+    WHERE enquiries.vertical = 'development'
+    AND enquiry_type = 'enquiry'
+    AND leadable_id IS NULL
     ${enqLocationCondition}
   `;
 
-  const sql = `
-          -- ${stage.metric_name}
-          SELECT '${stage.metric_name}' as metric, SUM(leads)::int as count
+  const finalQuery = `
+          -- Leads
+          SELECT 'Leads' as metric, SUM(leads)::int as count
           FROM
           (
             ${oppsSql}
@@ -92,8 +95,13 @@ function buildMultiSourceQuery(stage: FunnelStage, vertical: Vertical, locations
             ${enqSql}
           ) leads_data
   `;
+  console.log('[DEBUG] vertical', vertical);
+  console.log('[DEBUG] buildLeadsQuery SQL:', finalQuery);
+  console.log('[DEBUG] oppsLocation condition:', oppsLocationCondition);
+  console.log('[DEBUG] enqLocation condition:', enqLocationCondition);
 
-  return { sql, params: [...slugExcl.params, ...dnbExcl.params] };
+  return finalQuery;
+}
 }
 
 /**
@@ -128,95 +136,41 @@ function buildSingleSourceQuery(stage: FunnelStage, vertical: Vertical, location
   return { sql, params: slugExcl.params };
 }
 
-/**
- * Build SQL for a join_source stage (e.g. Meetings, Viewings).
- * Reads tables[], join_conditions[], timestamp_column, timestamp_table from config.
- */
-function buildJoinSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const tables = stage.tables || [];
-  const joins = stage.join_conditions || [];
-  const timestampCol = stage.timestamp_column!;
-  const timestampTable = stage.timestamp_table || tables[0];
-
-  const slugExcl = stage.mandatory_exclusions.includes("slug_exclusions")
-    ? getSlugExclusions(3)
-    : { clause: "", params: [] as string[] };
-
-  const conditions = (stage.mandatory_conditions || []).map(c => `AND ${c}`).join("\n            ");
-  const locationCondition = getLocationCondition(locations, "development_opportunities", "interested_location");
-
-  // Build FROM + JOINs: first table is the base, rest are INNER JOINs
-  const [baseTable, ...joinTables] = tables;
-  const joinClauses = joinTables.map(t => {
-    const matchingCondition = joins.find(j => j.includes(t));
-    return matchingCondition ? `INNER JOIN ${t} ON ${matchingCondition}` : `INNER JOIN ${t}`;
-  }).join("\n          ");
-
-  const sql = `
-          -- ${stage.metric_name}
-          SELECT '${stage.metric_name}' as metric, ${stage.count_expression}::int as count
-          FROM ${baseTable}
-          ${joinClauses}
-          WHERE ${timestampTable}.${timestampCol} >= ($1::date - INTERVAL '330 minutes')
-            AND ${timestampTable}.${timestampCol} < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
-            ${slugExcl.clause}
-            ${conditions}
-            ${locationCondition}
-  `;
-
-  return { sql, params: slugExcl.params };
+export function buildProspectsQuery(vertical: Vertical, locations?: string[]): string {
+  if (vertical === Vertical.THE_CHAPTER) {
+    return buildChapterProspectsQuery(locations);
+  }
+  return buildStageQuerySimple("Prospects", config.funnel_stages.prospect, vertical, locations);
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
-
-/**
- * Build a query for a single metric by its config key.
- * Dispatches to the correct builder based on stage.type.
- */
-export function buildMetricQuery(stageKey: string, vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const stage = config.funnel_stages[stageKey];
-  if (!stage) {
-    throw new Error(`Unknown funnel metric: ${stageKey}`);
+export function buildAccountsQuery(vertical: Vertical, locations?: string[]): string {
+  if (vertical === Vertical.THE_CHAPTER) {
+    return buildChapterAccountsQuery(locations);
   }
-
-  switch (stage.type) {
-    case "multi_source":
-      return buildMultiSourceQuery(stage, vertical, locations);
-    case "single_source":
-      return buildSingleSourceQuery(stage, vertical, locations);
-    case "join_source":
-      return buildJoinSourceQuery(stage, vertical, locations);
-    default:
-      throw new Error(`Unknown stage type "${stage.type}" for metric "${stageKey}"`);
-  }
+  return buildStageQuerySimple("Accounts", config.funnel_stages.account, vertical, locations);
 }
 
-/**
- * Build the combined funnel query.
- * If metricKey is provided, returns only that metric.
- * If omitted, returns all metrics UNIONed and ordered by sort_order.
- */
-export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[], metricKey?: string): ParameterizedQuery {
-  // Single metric mode
-  if (metricKey) {
-    return buildMetricQuery(metricKey, vertical, locations);
+export function buildSalesQuery(vertical: Vertical, locations?: string[]): string {
+  if (vertical === Vertical.THE_CHAPTER) {
+    return buildChapterSalesQuery(locations);
   }
+  return buildStageQuerySimple("Sales", config.funnel_stages.sale, vertical, locations);
+}
 
-  // All metrics mode — sort by sort_order, UNION ALL
-  const stages = Object.entries(config.funnel_stages)
-    .sort(([, a], [, b]) => a.sort_order - b.sort_order);
+export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[]): string {
+  // Build individual queries
+  const leadsVal = buildLeadsQuery(vertical, locations);
+  // Wrap in subquery to get single row with 'Leads' metric
+  // Prospects
+  const prospectsVal = buildProspectsQuery(vertical, locations);
+  // Accounts
+  const accountsVal = buildAccountsQuery(vertical, locations);
+  // Sales
+  const salesVal = buildSalesQuery(vertical, locations);
 
-  const metricQueries = stages.map(([key]) => buildMetricQuery(key, vertical, locations));
-
-  const unionSql = metricQueries.map(q => q.sql).join("\n          UNION ALL\n");
-
-  // Build ORDER BY from sort_order
-  const orderCases = stages
-    .map(([, stage]) => `WHEN metric = '${stage.metric_name}' THEN ${stage.sort_order}`)
-    .join("\n          ");
-
-  const sql = `
-        SELECT * FROM
+  return `
+        SELECT metric, count
+        FROM
         (
           ${unionSql}
         ) query
@@ -235,4 +189,176 @@ export function buildSalesFunnelQuery(vertical: Vertical, locations?: string[], 
   );
 
   return { sql, params: supersetParams };
+}
+
+// ============================================================================
+// CHAPTER VERTICAL QUERIES
+// ============================================================================
+
+// Helper for Chapter name-based test exclusions
+function getChapterNameExclusions(tablePrefix: string = "chapter_opportunities"): string {
+  return `AND (lower(${tablePrefix}.name) NOT LIKE '%test%' 
+       AND lower(${tablePrefix}.name) NOT LIKE 'test%' 
+       AND lower(${tablePrefix}.name) != 'test')`;
+}
+
+// Helper for Chapter location filtering
+function getChapterLocationCondition(locations?: string[], tablePrefix: string = "chapter_opportunities", column: string = "interested_location"): string {
+  if (!locations || locations.length === 0) return "";
+
+  const conditions: string[] = [];
+  for (const loc of locations) {
+    conditions.push(`${tablePrefix}.${column} ILIKE '%${loc}%'`);
+  }
+
+  return `AND (${conditions.join(" OR ")})`;
+}
+
+/**
+ * Build Chapter Leads query using LEFT JOIN pattern
+ * Combines chapter_opportunities + enquiries (vertical='chapter')
+ * Matches reference Redash query format exactly.
+ */
+export function buildChapterLeadsQuery(locations?: string[]): string {
+  const oppsLocationCondition = getChapterLocationCondition(locations, "chapter_opportunities", "interested_location");
+  const enqLocationCondition = getChapterLocationCondition(locations, "enquiries", "location");
+  const nameExclusionOpps = getChapterNameExclusions("chapter_opportunities");
+  const nameExclusionEnq = getChapterNameExclusions("enquiries");
+
+  // Part A: Chapter Opportunities — exact reference query format
+  const oppsSql = `
+    SELECT 'Leads' as metric,
+           COUNT(DISTINCT(chapter_opportunities.slug)) as leads
+    FROM chapter_opportunities
+    WHERE date(enquired_at + interval '330 minutes') BETWEEN $1 AND $2
+    ${nameExclusionOpps}
+    ${oppsLocationCondition}
+  `;
+
+  // Part B: Chapter Enquiries — exact reference query format
+  const enqSql = `
+    SELECT 'Leads' as metric,
+           COUNT(id) as leads2
+    FROM enquiries
+    WHERE enquiries.vertical = 'chapter'
+    AND enquiry_type = 'enquiry'
+    AND leadable_id IS NULL
+    AND date(enquiries.created_at + interval '330 minutes') BETWEEN $1 AND $2
+    ${nameExclusionEnq}
+    ${enqLocationCondition}
+  `;
+
+  // LEFT JOIN pattern (Chapter-specific) — exact reference query format
+  const finalQuery = `
+    SELECT
+      a.metric,
+      (COALESCE(a.leads, 0) + COALESCE(b.leads2, 0)) as count
+    FROM (${oppsSql}) a
+    LEFT JOIN (${enqSql}) b ON a.metric = b.metric
+  `;
+
+  console.log('[DEBUG] buildChapterLeadsQuery SQL:', finalQuery);
+  console.log('[DEBUG] Chapter oppsLocation condition:', oppsLocationCondition);
+  console.log('[DEBUG] Chapter enqLocation condition:', enqLocationCondition);
+
+  return finalQuery;
+}
+
+function buildChapterStageQuerySimple(stageName: string, timestampCol: string, locations?: string[]): string {
+  const table = "chapter_opportunities";
+  const nameExclusion = getChapterNameExclusions(table);
+  const locationCondition = getChapterLocationCondition(locations, table, "interested_location");
+
+  // Mandatory condition: timestamp must be present
+  const mandatoryCondition = `AND ${timestampCol} IS NOT NULL`;
+
+  return `
+    SELECT '${stageName}' as metric, COUNT(DISTINCT(${table}.slug))::int as count
+    FROM ${table}
+    WHERE ${timestampCol} >= ($1::date - INTERVAL '330 minutes')
+      AND ${timestampCol} < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
+      ${mandatoryCondition}
+      ${nameExclusion}
+      ${locationCondition}
+  `;
+}
+
+export function buildChapterProspectsQuery(locations?: string[]): string {
+  // Reference query logic for Location:
+  // If user provides locations, build partial match OR group.
+  // If no location, use ILIKE '%%' to match non-nulls (consistent with Redash template).
+  const locationCondition = (locations && locations.length > 0)
+    ? getChapterLocationCondition(locations, "chapter_opportunities", "interested_location")
+    : `AND chapter_opportunities.interested_location ILIKE '%%'`;
+
+  const nameExclusion = getChapterNameExclusions("chapter_opportunities");
+
+  // Matches user's requested format:
+  // SELECT 'Prospects' as metric, count(distinct(chapter_opportunities.slug)) as prospects
+  // ... WHERE date(lead_completed_at ...) ...
+  const sql = `
+    SELECT 'Prospects' as metric, 
+           COUNT(DISTINCT(chapter_opportunities.slug)) as prospects 
+    FROM chapter_opportunities 
+    WHERE date(lead_completed_at + interval '330 minutes') BETWEEN $1 AND $2
+    ${nameExclusion}
+    ${locationCondition}
+  `;
+
+  console.log('[DEBUG] buildChapterProspectsQuery SQLnameExclusion:', nameExclusion);
+  console.log('[DEBUG] buildChapterProspectsQuery SQLlocationCondition:', locationCondition);
+
+  return sql;
+}
+
+export function buildChapterAccountsQuery(locations?: string[]): string {
+  // Reference query logic for Location:
+  const locationCondition = (locations && locations.length > 0)
+    ? getChapterLocationCondition(locations, "chapter_opportunities", "interested_location")
+    : `AND chapter_opportunities.interested_location ILIKE '%%'`;
+
+  const nameExclusion = getChapterNameExclusions("chapter_opportunities");
+
+  // Matches user's requested format:
+  // SELECT 'Accounts' as metric, count(distinct(chapter_opportunities.slug)) as accounts
+  // ... WHERE date(prospect_completed_at ...) ...
+  const sql = `
+    SELECT 'Accounts' as metric,
+           COUNT(DISTINCT(chapter_opportunities.slug)) as accounts
+    FROM chapter_opportunities
+    WHERE date(prospect_completed_at + interval '330 minutes') BETWEEN $1 AND $2
+    ${nameExclusion}
+    ${locationCondition}
+  `;
+
+  console.log('[DEBUG] buildChapterAccountsQuery SQLnameExclusion:', nameExclusion);
+  console.log('[DEBUG] buildChapterAccountsQuery SQLlocationCondition:', locationCondition);
+
+  return sql;
+}
+
+export function buildChapterSalesQuery(locations?: string[]): string {
+  // Reference query logic for Location:
+  const locationCondition = (locations && locations.length > 0)
+    ? getChapterLocationCondition(locations, "chapter_opportunities", "interested_location")
+    : `AND chapter_opportunities.interested_location ILIKE '%%'`;
+
+  const nameExclusion = getChapterNameExclusions("chapter_opportunities");
+
+  // Matches user's requested format:
+  // SELECT 'Sales' as metric, count(distinct(chapter_opportunities.slug)) as sales
+  // ... WHERE date(maal_laao_at ...) ...
+  const sql = `
+     SELECT 'Sales' as metric,
+            COUNT(DISTINCT(chapter_opportunities.slug)) as sales
+     FROM chapter_opportunities
+     WHERE date(maal_laao_at + interval '330 minutes') BETWEEN $1 AND $2
+     ${nameExclusion}
+     ${locationCondition}
+  `;
+
+  console.log('[DEBUG] buildChapterSalesQuery SQLnameExclusion:', nameExclusion);
+  console.log('[DEBUG] buildChapterSalesQuery SQLlocationCondition:', locationCondition);
+
+  return sql;
 }
