@@ -31,10 +31,18 @@ function getSlugExclusions(paramOffset: number): { clause: string; params: strin
   };
 }
 
+/** Map a vertical to its primary opportunities table name. */
+function getOpportunitiesTable(vertical: Vertical): string {
+  switch (vertical) {
+    case Vertical.THE_CHAPTER: return "chapter_opportunities";
+    default:                   return "development_opportunities";
+  }
+}
+
 /** Build a parameterized DnB source exclusion clause (for leads only). */
-function getDnBExclusion(paramOffset: number): { clause: string; params: string[] } {
+function getDnBExclusion(paramOffset: number, table: string = "development_opportunities"): { clause: string; params: string[] } {
   return {
-    clause: `AND development_opportunities.source != $${paramOffset}`,
+    clause: `AND ${table}.source != $${paramOffset}`,
     params: ["DnB"],
   };
 }
@@ -51,34 +59,52 @@ function getLocationCondition(locations?: string[], tablePrefix: string = "devel
 /**
  * Build SQL for a multi_source stage (e.g. Leads = opportunities UNION enquiries).
  * Reads source_1_opportunities + source_2_enquiries from the stage config.
+ * For non-Isprava verticals only source_1 is used (enquiries filters on vertical='development').
  */
 function buildMultiSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const slugExcl = getSlugExclusions(3);
-  const dnbExcl = getDnBExclusion(3 + slugExcl.params.length);
+  const oppsTable = getOpportunitiesTable(vertical);
+  const isIsprava = vertical === Vertical.ISPRAVA;
+  const isChapter = vertical === Vertical.THE_CHAPTER;
 
-  // Source 1: development_opportunities
+  // Slug and DnB exclusions are Isprava-only
+  const slugExcl = isIsprava ? getSlugExclusions(3) : { clause: "", params: [] as string[] };
+  const dnbExcl  = isIsprava ? getDnBExclusion(3 + slugExcl.params.length, oppsTable) : { clause: "", params: [] as string[] };
+
+  // Test name exclusions are Chapter-only
+  const testNameExclOpps = isChapter
+    ? `AND (lower(${oppsTable}.name) NOT LIKE '%test%' AND lower(${oppsTable}.name) NOT LIKE 'test%' AND lower(${oppsTable}.name) != 'test')`
+    : "";
+  const testNameExclEnq = isChapter
+    ? `AND (lower(enquiries.name) NOT LIKE '%test%' AND lower(enquiries.name) NOT LIKE 'test%' AND lower(enquiries.name) != 'test')`
+    : "";
+
+  // Source 1: vertical-specific opportunities table
   const src1 = stage.source_1_opportunities!;
-  const oppsLocationCondition = getLocationCondition(locations, src1.table, "interested_location");
+  const oppsLocationCondition = getLocationCondition(locations, oppsTable, "interested_location");
 
   const oppsSql = `
-    SELECT ${src1.count_expression} AS leads
-    FROM ${src1.table}
+    SELECT COUNT(DISTINCT(${oppsTable}.slug)) AS leads
+    FROM ${oppsTable}
     WHERE (date(${src1.timestamp_column} + interval '330 minutes') BETWEEN $1 AND $2)
     ${oppsLocationCondition}
     ${slugExcl.clause}
     ${dnbExcl.clause}
+    ${testNameExclOpps}
   `;
 
-  // Source 2: enquiries
+  // Source 2: enquiries — Isprava uses vertical='development', Chapter uses vertical='chapter'
   const src2 = stage.source_2_enquiries!;
   const enqLocationCondition = getLocationCondition(locations, src2.table, "location");
-  const enqConditions = (src2.mandatory_conditions || []).map(c => `AND ${c}`).join("\n    ");
+  const enqVertical = isChapter ? "chapter" : "development";
 
   const enqSql = `
     SELECT ${src2.count_expression} AS leads
     FROM ${src2.table}
     WHERE (date(${src2.table}.${src2.timestamp_column} + interval '5 hours 30 minutes') BETWEEN $1 AND $2)
-    ${enqConditions}
+    AND ${src2.table}.vertical = '${enqVertical}'
+    AND enquiry_type = 'enquiry'
+    AND leadable_id IS NULL
+    ${testNameExclEnq}
     ${enqLocationCondition}
   `;
 
@@ -98,28 +124,23 @@ function buildMultiSourceQuery(stage: FunnelStage, vertical: Vertical, locations
 
 /**
  * Build SQL for a single_source stage (e.g. Prospects, Accounts, Sales).
- * Reads table, timestamp_column, mandatory_conditions from stage config.
+ * Routes to the vertical-specific opportunities table — no extra vertical column
+ * filter needed since each table contains only that vertical's data.
  */
 function buildSingleSourceQuery(stage: FunnelStage, vertical: Vertical, locations?: string[]): ParameterizedQuery {
-  const table = stage.table || "development_opportunities";
+  const table = getOpportunitiesTable(vertical);
   const timestampCol = stage.timestamp_column!;
 
   const slugExcl = getSlugExclusions(3);
   const conditions = (stage.mandatory_conditions || []).map(c => `AND ${c}`).join("\n            ");
   const locationCondition = getLocationCondition(locations, table, "interested_location");
 
-  // development_opportunities has no vertical column — gate on isprava only
-  const verticalCondition = table === "development_opportunities"
-    ? `AND '${vertical}' = 'isprava'`
-    : `AND vertical = '${vertical}'`;
-
   const sql = `
           -- ${stage.metric_name}
-          SELECT '${stage.metric_name}' as metric, ${stage.count_expression}::int as count
+          SELECT '${stage.metric_name}' as metric, COUNT(DISTINCT(${table}.slug))::int as count
           FROM ${table}
           WHERE ${timestampCol} >= ($1::date - INTERVAL '330 minutes')
             AND ${timestampCol} < ($2::date + INTERVAL '1 day' - INTERVAL '330 minutes')
-            ${verticalCondition}
             ${slugExcl.clause}
             ${conditions}
             ${locationCondition}

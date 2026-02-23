@@ -46,6 +46,8 @@ export function isValidVertical(value: unknown): value is Vertical {
 const VERTICAL_ALIASES: Record<string, Vertical> = {
     'chapter': Vertical.THE_CHAPTER,
     'the chapter': Vertical.THE_CHAPTER,
+    'chapter2026': Vertical.THE_CHAPTER,
+    'isprava2026': Vertical.ISPRAVA,
     'lohono': Vertical.LOHONO_STAYS,
     'lohono stays': Vertical.LOHONO_STAYS,
 };

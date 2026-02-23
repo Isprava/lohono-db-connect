@@ -35,9 +35,11 @@ function normalizeQuestion(question: string): string {
   return question.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Build a cache key from the user message and vertical. */
-function responseCacheKey(userMessage: string, vertical?: Vertical): string {
-  return `${normalizeQuestion(userMessage)}:${vertical || DEFAULT_VERTICAL}`;
+/** Build a cache key from the user message only.
+ * Vertical is intentionally excluded — Claude detects it from message content,
+ * so the same question always maps to the same answer regardless of session default. */
+function responseCacheKey(userMessage: string, _vertical?: Vertical): string {
+  return normalizeQuestion(userMessage);
 }
 
 /**
@@ -537,8 +539,8 @@ export async function chat(
             logInfo(`Resolved locations: ${JSON.stringify(rawLocations)} -> ${JSON.stringify(canonicalLocations)}`);
           }
 
-          // 2. Inject vertical if needed
-          if (vertical && isSalesFunnelTool) {
+          // 2. Inject vertical if needed — only if Claude didn't already specify one
+          if (vertical && isSalesFunnelTool && !finalInput.vertical) {
             finalInput = { ...finalInput, vertical };
           }
 
@@ -764,8 +766,8 @@ export async function* chatStream(
             logInfo(`Resolved locations: ${JSON.stringify(rawLocations)} -> ${JSON.stringify(canonicalLocations)}`);
           }
 
-          // Inject vertical if needed
-          if (vertical && isSalesFunnelTool) {
+          // Inject vertical if needed — only if Claude didn't already specify one
+          if (vertical && isSalesFunnelTool && !finalInput.vertical) {
             finalInput = { ...finalInput, vertical };
           }
 
