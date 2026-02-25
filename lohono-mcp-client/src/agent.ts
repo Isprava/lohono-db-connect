@@ -263,12 +263,14 @@ You have access to the Lohono production database through MCP tools.
 - Always pass the canonical vertical value (\`the_chapter\`, \`lohono_stays\`, \`isprava\`, \`solene\`) to tool calls.
 
 **Query Process:**
-1. For sales funnel metrics (Leads, Prospects, Accounts, Sales), ALWAYS use the get_sales_funnel tool
-2. For schema exploration, use catalog tools (get_tables_summary, search_tables, get_table_schema, etc.)
-3. For questions about policies, procedures, SOPs, villa information, guest guidelines, operational documentation, or Goa building/construction regulations (DCR norms, FAR/FSI, setbacks, zoning, parking, fire safety, building heights, plot coverage, sub-division rules, land development regulations), use the query_knowledge_base tool
-4. If a question is ambiguous, prefer data tools for metrics/numbers and the knowledge base for qualitative/procedural/regulatory questions
-5. If the knowledge base tool returns an error (e.g., access error, permission denied), tell the user clearly that the knowledge base is temporarily unavailable and suggest they contact their team for the information directly. Do NOT say "I wasn't able to find information" — be specific about the issue.
-6. Present results to users in a clear, professional format
+1. For sales funnel metrics (Leads, Prospects, Accounts, Sales, Outlook), ALWAYS use the get_sales_funnel tool
+2. For orderbook queries — whenever the user says "orderbook", "order book", "orderbook actuals", "orderbook breakdown", "orderbook by location", "orderbook by property type", or any variation — ALWAYS use the get_orderbook tool. NEVER use get_sales_funnel for orderbook queries.
+3. For Chapter scorecard requests — whenever the user says "MTD", "YTD", "LYTD", "LYMTD", "MTD Scorecard", "YTD Scorecard", "LYTD Scorecard", "LYMTD Scorecard", "Month-to-date scorecard", "Year-to-date scorecard", "Last year month to date", "chapter scorecard", "chapter MTD", "chapter YTD", "chapter LYTD", "chapter LYMTD", "get MTD", "get LYTD", "get LYMTD", or any variation — ALWAYS use the get_chapter_scorecard tool. It computes dates automatically; do NOT ask the user for dates. Use period='mtd' for current month, period='ytd' for current year, period='lytd' for last year to today, period='lymtd' for same month last year.
+4. For schema exploration, use catalog tools (get_tables_summary, search_tables, get_table_schema, etc.)
+5. For questions about policies, procedures, SOPs, villa information, guest guidelines, operational documentation, or Goa building/construction regulations (DCR norms, FAR/FSI, setbacks, zoning, parking, fire safety, building heights, plot coverage, sub-division rules, land development regulations), use the query_knowledge_base tool
+6. If a question is ambiguous, prefer data tools for metrics/numbers and the knowledge base for qualitative/procedural/regulatory questions
+7. If the knowledge base tool returns an error (e.g., access error, permission denied), tell the user clearly that the knowledge base is temporarily unavailable and suggest they contact their team for the information directly. Do NOT say "I wasn't able to find information" — be specific about the issue.
+8. Present results to users in a clear, professional format
 
 **IMPORTANT - User-Facing Responses:**
 - NEVER show query execution plans or technical query analysis details to users
@@ -523,6 +525,7 @@ export async function chat(
           const toolInput = tu.input as Record<string, unknown>;
           const isSalesFunnelTool = [
             'get_sales_funnel',
+            'get_orderbook',
             'get_leads',
             'get_prospects',
             'get_accounts',
@@ -750,6 +753,7 @@ export async function* chatStream(
           const toolInput = tu.input as Record<string, unknown>;
           const isSalesFunnelTool = [
             'get_sales_funnel',
+            'get_orderbook',
             'get_leads',
             'get_prospects',
             'get_accounts',
