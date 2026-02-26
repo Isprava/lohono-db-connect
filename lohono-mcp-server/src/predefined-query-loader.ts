@@ -146,7 +146,7 @@ export function loadQueryCatalog(): QueryEntry[] {
     );
   }
 
-  const raw = fs.readFileSync(CSV_PATH, "utf-8");
+  const raw = fs.readFileSync(CSV_PATH, "utf-8").replaceAll("\r\n", "\n");
   _catalog = parseCsv(raw);
   logger.info(`Loaded ${_catalog.length} predefined queries from ${CSV_PATH}`);
   return _catalog;
