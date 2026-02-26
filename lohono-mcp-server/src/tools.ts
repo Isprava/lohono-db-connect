@@ -12,8 +12,10 @@ export { getToolDefinitions as toolDefinitions_fn, handleToolCall } from "./tool
 
 import { registerPlugins } from "./tools/registry.js";
 import { salesFunnelPlugins } from "./tools/sales-funnel.plugin.js";
+import { predefinedQueryPlugins } from "./tools/predefined-query.plugin.js";
 
 registerPlugins(...salesFunnelPlugins);
+registerPlugins(...predefinedQueryPlugins);
 
 // Re-export toolDefinitions as the array that index.ts and index-sse.ts expect
 import { getToolDefinitions } from "./tools/registry.js";
