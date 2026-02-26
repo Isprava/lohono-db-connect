@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "lohono-db-connect": {
-      "command": "npx",
-      "args": ["tsx", "lohono-mcp-server/src/index.ts"],
+      "command": "bash",
+      "args": [
+        "-c",
+        "set -a; source .env; set +a; export DB_HOST=localhost DATABASE_DIR=./database DB_SSL=false; exec npx tsx lohono-mcp-server/src/index.ts"
+      ],
       "cwd": "/home/aarya-desai/Projects/AILABS/lohono-db-connect"
     }
   }

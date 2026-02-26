@@ -3801,9 +3801,10 @@ FROM development_opportunities
 WHERE current_stage= 'prospect'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%'
 AND lower(name) != 'test')
-and date(lead_completed_at + interval '330 minutes') >= '2022-04-01'
+and date(lead_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
+and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
 AND maal_laao_at IS NULL
-AND status != 'closed' 
+AND status != 'closed'
 ORDER BY ageing DESC"
 Open Accounts - MTD | Isprava,"SELECT 
     slug,
@@ -3817,10 +3818,11 @@ Open Accounts - MTD | Isprava,"SELECT
 FROM development_opportunities
 WHERE current_stage= 'account'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%'
-and date(prospect_completed_at + interval '330 minutes') >= '2022-04-01'
+and date(prospect_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
+and date_part('day', prospect_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
 AND lower(name) != 'test')
 AND maal_laao_at IS NULL
-AND status != 'closed' 
+AND status != 'closed'
 ORDER BY ageing DESC"
 Overall Leads - Isprava,"select a.*,b.moved_to_prospect,c.moved_to_account,d.maal_laao_date, 
 INITCAP(REPLACE(closed_reason,'_',' ')) AS closed_reason, explanation, '-' as Trash FROM
@@ -4971,9 +4973,10 @@ FROM chapter_opportunities
 WHERE current_stage= 'prospect'
 and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
 and lower(chapter_opportunities.name) != 'test')
-and date(lead_completed_at + interval '330 minutes') >= '2023-04-01'
+and date(lead_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
+and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
 AND maal_laao_at IS NULL
-AND status != 'closed' 
+AND status != 'closed'
 ORDER BY ageing DESC"
 Open Accounts - Chapter,"SELECT 
     slug,
@@ -4987,11 +4990,12 @@ Open Accounts - Chapter,"SELECT
 FROM chapter_opportunities
 WHERE current_stage= 'account'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%')
-and date(prospect_completed_at + interval '330 minutes') >= '2023-04-01'
+and date(prospect_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
+and date_part('day', prospect_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
 and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
 and lower(chapter_opportunities.name) != 'test')
 AND maal_laao_at IS NULL
-AND status != 'closed' 
+AND status != 'closed'
 ORDER BY ageing DESC"
 Overall Leads & Closed Leads | Chapter,"select a.*,b.moved_to_prospect,c.moved_to_account,d.maal_laao_date, 
 INITCAP(REPLACE(closed_reason,'_',' ')) AS closed_reason, explanation, '-' as Trash FROM

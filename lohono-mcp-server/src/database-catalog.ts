@@ -53,7 +53,20 @@ export interface ForeignKeyCatalog {
 
 // ── Paths ──────────────────────────────────────────────────────────────────
 
-const DATABASE_DIR = process.env.DATABASE_DIR || "/app/database";
+function resolveDatabaseDir(): string {
+  if (process.env.DATABASE_DIR) return process.env.DATABASE_DIR;
+  const candidates = [
+    path.resolve("database"),
+    path.resolve(__dirname, "../../../database"),
+    "/app/database",
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, "schema"))) return dir;
+  }
+  return "/app/database";
+}
+
+const DATABASE_DIR = resolveDatabaseDir();
 const SCHEMA_DIR = path.join(DATABASE_DIR, "schema");
 const DATABASE_CATALOG_PATH = path.join(SCHEMA_DIR, "database-catalog.json");
 const FOREIGN_KEYS_CATALOG_PATH = path.join(

@@ -12,7 +12,21 @@ export interface QueryEntry {
 
 // ── Path ───────────────────────────────────────────────────────────────────
 
-const DATABASE_DIR = process.env.DATABASE_DIR || "/app/database";
+function resolveDatabaseDir(): string {
+  if (process.env.DATABASE_DIR) return process.env.DATABASE_DIR;
+  // Try common local paths before falling back to Docker path
+  const candidates = [
+    path.resolve("database"),          // CWD/database
+    path.resolve(__dirname, "../../../database"),  // relative to compiled output
+    "/app/database",                   // Docker default
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, "schema"))) return dir;
+  }
+  return "/app/database";
+}
+
+const DATABASE_DIR = resolveDatabaseDir();
 const CSV_PATH = path.join(DATABASE_DIR, "schema", "QueriesSheet1.csv");
 
 // ── In-memory cache ────────────────────────────────────────────────────────

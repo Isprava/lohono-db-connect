@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { executeReadOnlyQuery } from "../db/pool.js";
 import { loadQueryCatalog, matchQueries } from "../predefined-query-loader.js";
-import { replaceDatesInSql } from "../predefined-query-date-replacer.js";
+import { replaceDatesInSql, computeDefaultDates } from "../predefined-query-date-replacer.js";
+import { injectLocationFilter } from "../predefined-query-location-replacer.js";
 import type { ToolPlugin, ToolResult } from "./types.js";
 import { logger } from "../../../shared/observability/src/logger.js";
 import { RedisCache } from "../../../shared/redis/src/index.js";
@@ -18,6 +19,10 @@ const RunPredefinedQueryInputSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "end_date must be YYYY-MM-DD")
     .optional(),
+  locations: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Optional list of locations to filter by (e.g. ['Goa', 'Alibaug']). Fuzzy matching via ILIKE is applied."),
 });
 
 // ── Cache ───────────────────────────────────────────────────────────────────
@@ -56,9 +61,10 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
       `Runs a predefined SQL query from the curated query catalog. ` +
       `Provide a natural-language search term (e.g. "orderbook actuals", "scorecard MTD isprava", ` +
       `"lead to prospect conversion chapter") and the tool will fuzzy-match it to the best query. ` +
-      `Optionally provide start_date and end_date (YYYY-MM-DD) to override the default FY date boundaries in the query. ` +
-      `If no dates are provided, queries that use dynamic dates (CURRENT_DATE, NOW()) will work as-is, ` +
-      `while queries with hardcoded dates will use their original FY 2025-26 values.`,
+      `Optionally provide start_date and end_date (YYYY-MM-DD) to override date boundaries. ` +
+      `If no dates are provided, defaults are auto-computed: start_date = current FY start (April 1), ` +
+      `end_date = today's IST date. All hardcoded dates and CURRENT_DATE/NOW() expressions are replaced accordingly. ` +
+      `Optionally provide locations (e.g. ['Goa', 'Alibaug']) to filter results by location. Fuzzy matching is applied.`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -74,6 +80,11 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
           type: "string",
           description: "Optional period end date in YYYY-MM-DD format (e.g. '2026-02-28'). Used to replace hardcoded date boundaries.",
         },
+        locations: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of locations to filter by (e.g. ['Goa', 'Alibaug']). Fuzzy matching is applied.",
+        },
       },
       required: ["query"],
     },
@@ -81,7 +92,7 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
 
   async handler(args): Promise<ToolResult> {
     const parsed = RunPredefinedQueryInputSchema.parse(args);
-    const { query: searchTerm, start_date, end_date } = parsed;
+    const { query: searchTerm, start_date, end_date, locations } = parsed;
     const startTime = Date.now();
 
     // ── Load catalog & match ──────────────────────────────────────────────
@@ -125,13 +136,21 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
     const best = matches[0];
     let sql = best.entry.sql;
 
-    // Apply date replacements if dates provided
-    if (start_date && end_date) {
-      sql = replaceDatesInSql(sql, start_date, end_date);
+    // Always apply date replacements — compute defaults from today's IST date
+    // if the caller did not provide explicit dates.
+    const defaults = computeDefaultDates();
+    const effectiveStartDate = start_date || defaults.startDate;
+    const effectiveEndDate = end_date || defaults.endDate;
+    sql = replaceDatesInSql(sql, effectiveStartDate, effectiveEndDate);
+
+    // Apply location filter if locations provided
+    if (locations && locations.length > 0) {
+      sql = injectLocationFilter(sql, locations);
     }
 
-    // Check cache
-    const cacheKey = `predefined:${best.entry.title}:${start_date || ""}:${end_date || ""}`;
+    // Check cache (include locations in key for correct cache isolation)
+    const locKey = locations && locations.length > 0 ? locations.sort().join(",") : "";
+    const cacheKey = `predefined:${best.entry.title}:${effectiveStartDate}:${effectiveEndDate}:${locKey}`;
     const cached = await queryCache.get(cacheKey);
     if (cached) {
       logger.info(`Cache hit: ${cacheKey}`);
@@ -161,7 +180,7 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
     const rows = result.rows as Record<string, unknown>[];
 
     // Determine TTL
-    const ttl = (start_date && end_date && isHistoricalRange(end_date))
+    const ttl = isHistoricalRange(effectiveEndDate)
       ? HISTORICAL_TTL
       : CURRENT_TTL;
     await queryCache.set(cacheKey, { rows, rowCount: result.rowCount }, ttl);

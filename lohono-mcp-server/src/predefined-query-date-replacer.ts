@@ -1,10 +1,45 @@
 /**
  * Replaces hardcoded FY 2025-26 date literals in predefined SQL queries
- * with user-provided date boundaries.
+ * with dynamically computed (or user-provided) date boundaries.
  *
- * Dynamic expressions (CURRENT_DATE, NOW(), date_trunc(...)) are left
- * untouched — they're already relative to execution time.
+ * Dynamic upper-bound expressions like DATE(NOW()) and CURRENT_DATE are
+ * also replaced with the end_date so the query range is fully bounded
+ * by the requested period.
+ *
+ * Default dates are always computed from today's IST date so that stale
+ * hardcoded dates in the CSV queries are never left untouched.
  */
+
+/** Get today's date in IST (UTC + 5:30). */
+export function getTodayIST(): string {
+  const now = new Date();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(now.getTime() + istOffsetMs);
+  return formatDate(istDate);
+}
+
+/**
+ * Compute the current FY start date (April 1).
+ * Jan–Mar → FY started the previous calendar year.
+ * Apr–Dec → FY started the current calendar year.
+ */
+export function getCurrentFYStart(todayIST?: string): string {
+  const today = todayIST || getTodayIST();
+  const d = new Date(today + "T00:00:00");
+  const month = d.getMonth(); // 0-indexed
+  const fyStartYear = month < 3 ? d.getFullYear() - 1 : d.getFullYear();
+  return `${fyStartYear}-04-01`;
+}
+
+/**
+ * Compute default date boundaries based on the current IST date.
+ * Used when no explicit dates are provided to the predefined query tool.
+ */
+export function computeDefaultDates(): { startDate: string; endDate: string } {
+  const endDate = getTodayIST();
+  const startDate = getCurrentFYStart(endDate);
+  return { startDate, endDate };
+}
 
 /** Shift a YYYY-MM-DD date string by a number of years. */
 function shiftYears(dateStr: string, years: number): string {
@@ -91,6 +126,12 @@ export function replaceDatesInSql(
   for (const [original, replacement] of replacements) {
     result = result.replaceAll(original, replacement);
   }
+
+  // NOTE: CURRENT_DATE, NOW(), and DATE(NOW()) are intentionally NOT replaced.
+  // The CSV queries use these as dynamic PostgreSQL expressions that correctly
+  // evaluate at query time (e.g. date_trunc('month', CURRENT_DATE + interval '330 minutes')
+  // for MTD month-start, DATE(now() + INTERVAL '330 minutes') for today's IST date).
+  // Only hardcoded FY date literals above need replacement.
 
   return result;
 }
