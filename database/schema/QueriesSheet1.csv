@@ -3453,6 +3453,7 @@ and (lead_completed_at + interval '330 minutes')::date <
 and date_part('day',lead_completed_at + interval '330 minutes') <= 
     date_part('day',(now()- interval '1 day') + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )c on a.metric = c.metric 
 
 left join
@@ -3502,6 +3503,7 @@ and date_part('day',performed_at + interval '330 minutes') <=
     date_part('day',(now()- interval '1 day') + interval '330 minutes')
 AND activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
 and ( medium.name='Meeting')
+and development_opportunities.status != 'trash'
 )f on a.metric = f.metric
 
 left join
@@ -3536,6 +3538,7 @@ and (lead_completed_at + interval '330 minutes')::date <
 and date_part('day',lead_completed_at + interval '330 minutes') <= 
     date_part('day',(now() - interval '1 year') + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )h on a.metric = h.metric 
 
 left join
@@ -3623,6 +3626,7 @@ and (lead_completed_at + interval '330 minutes')::date <
 and date_part('day',lead_completed_at + interval '330 minutes') <= 
     date_part('day',(now()- interval '1 day') + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )c on a.metric = c.metric 
 
 left join
@@ -3672,6 +3676,7 @@ and date_part('day',performed_at + interval '330 minutes') <=
     date_part('day',(now()- interval '1 day') + interval '330 minutes')
 AND activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
 and ( medium.name='Meeting')
+and development_opportunities.status != 'trash'
 )f on a.metric = f.metric
 
 left join
@@ -3706,6 +3711,7 @@ and (lead_completed_at + interval '330 minutes')::date <
 and date_part('day',lead_completed_at + interval '330 minutes') <= 
     date_part('day',(now() - interval '1 year') + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )h on a.metric = h.metric 
 
 left join
@@ -4023,6 +4029,7 @@ FROM development_opportunities
 WHERE date(enquired_at + interval '330 minutes') >= '2025-04-01' 
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 and development_opportunities.source != 'DnB'
+and development_opportunities.status != 'trash'
 
 ) a 
 
@@ -4046,6 +4053,7 @@ SELECT
 FROM development_opportunities
 WHERE date(lead_completed_at + interval '330 minutes') between '2025-04-01' and  date(now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )c on a.metric = c.metric 
 
 left join
@@ -4081,6 +4089,7 @@ inner join development_opportunities on development_opportunities.id=activities.
 WHERE date(performed_at + interval '330 minutes') between '2025-04-01' and  date(now() + interval '330 minutes')
 AND activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
 and ( medium.name='Meeting')
+and development_opportunities.status != 'trash'
 )f on a.metric = f.metric
 
 left join
@@ -4105,6 +4114,7 @@ SELECT
 FROM development_opportunities
 WHERE date(lead_completed_at + interval '330 minutes') between '2025-04-01' and  date(now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )h on a.metric = h.metric 
 
 left join
@@ -4188,6 +4198,7 @@ WHERE (lead_completed_at + interval '330 minutes')::date BETWEEN
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )c on a.metric = c.metric 
 
 left join
@@ -4243,6 +4254,7 @@ WHERE (performed_at + interval '330 minutes')::date BETWEEN
   AND (CURRENT_DATE - INTERVAL '1 year')::date
 AND activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
 and ( medium.name='Meeting')
+and development_opportunities.status != 'trash'
 )f on a.metric = f.metric
 
 left join
@@ -4281,6 +4293,7 @@ WHERE (lead_completed_at + interval '330 minutes')::date BETWEEN
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.status != 'trash'
 )h on a.metric = h.metric 
 
 left join
@@ -4838,6 +4851,7 @@ and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_oppor
 and lower(chapter_opportunities.name) != 'test')
 AND activities.feedable_type='Task' and activities.leadable_type='Chapter::Opportunity'
 and ( medium.name='Meeting')
+and development_opportunities.status != 'trash'
 )f on a.metric = f.metric
 
 left join
@@ -5386,6 +5400,7 @@ WHERE (performed_at + interval '330 minutes')::date BETWEEN
   AND (CURRENT_DATE - INTERVAL '1 year')::date
 AND activities.feedable_type='Task' and activities.leadable_type='Chapter::Opportunity'
 and ( medium.name='Meeting')
+and development_opportunities.status != 'trash'
 )f on a.metric = f.metric
 
 left join

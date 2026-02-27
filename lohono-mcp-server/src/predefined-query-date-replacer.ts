@@ -1,10 +1,14 @@
 /**
- * Replaces hardcoded FY 2025-26 date literals in predefined SQL queries
- * with dynamically computed (or user-provided) date boundaries.
+ * Replaces date expressions in predefined SQL queries with values derived
+ * from the user-provided (or auto-computed) startDate / endDate boundaries.
  *
- * Dynamic upper-bound expressions like DATE(NOW()) and CURRENT_DATE are
- * also replaced with the end_date so the query range is fully bounded
- * by the requested period.
+ * Two classes of replacement:
+ *  1. Hardcoded FY 2025-26 date literals ('2025-04-01', '2025-02-28', etc.)
+ *     are swapped for the correct current-FY equivalents.
+ *  2. Dynamic expressions NOW() and CURRENT_DATE are replaced with anchored
+ *     values (TIMESTAMP '<endDate> 00:00:00' and DATE '<endDate>') so that
+ *     MTD queries produce the same result regardless of when PostgreSQL
+ *     executes them (avoids the 18:30 UTC midnight-IST drift problem).
  *
  * Default dates are always computed from today's IST date so that stale
  * hardcoded dates in the CSV queries are never left untouched.
@@ -127,11 +131,23 @@ export function replaceDatesInSql(
     result = result.replaceAll(original, replacement);
   }
 
-  // NOTE: CURRENT_DATE, NOW(), and DATE(NOW()) are intentionally NOT replaced.
-  // The CSV queries use these as dynamic PostgreSQL expressions that correctly
-  // evaluate at query time (e.g. date_trunc('month', CURRENT_DATE + interval '330 minutes')
-  // for MTD month-start, DATE(now() + INTERVAL '330 minutes') for today's IST date).
-  // Only hardcoded FY date literals above need replacement.
+  // Replace dynamic NOW() and CURRENT_DATE with values anchored to endDate.
+  //
+  // Without this, MTD queries use date_part('day', now() + interval '330 minutes')
+  // as their upper day-of-month bound. After 18:30 UTC on any given day (= midnight IST
+  // of the next day), now() + 330min crosses a UTC day boundary, causing date_part to
+  // return the NEXT day's number and silently pulling in the next IST day's records.
+  //
+  // Fix: replace NOW() with TIMESTAMP '<endDate> 00:00:00' and CURRENT_DATE with
+  // DATE '<endDate>'. This anchors the query to endDate at the Node.js call site,
+  // matching the behaviour of get_sales_funnel's explicit parameterized bounds.
+  //
+  // All downstream expressions remain correct:
+  //   date_part('day', TIMESTAMP '2026-02-27 00:00:00' + interval '330 minutes') = 27 ✓
+  //   date_trunc('month', DATE '2026-02-27' + interval '330 minutes') = 2026-02-01 ✓
+  //   now() - interval '1 year' → TIMESTAMP '2025-02-27 00:00:00' ✓
+  result = result.replace(/\bNOW\s*\(\s*\)/gi, `TIMESTAMP '${endDate} 00:00:00'`);
+  result = result.replace(/\bCURRENT_DATE\b/gi, `DATE '${endDate}'`);
 
   return result;
 }

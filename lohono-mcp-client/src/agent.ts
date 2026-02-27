@@ -263,14 +263,15 @@ You have access to the Lohono production database through MCP tools.
 - Always pass the canonical vertical value (\`the_chapter\`, \`lohono_stays\`, \`isprava\`, \`solene\`) to tool calls.
 
 **Query Process:**
-1. For sales funnel metrics (Leads, Prospects, Accounts, Sales), ALWAYS use the get_sales_funnel tool
-2. For Consolidated Dashboard / Consolidated Scorecard requests — whenever the user says "Consolidated Dashboard", "Consolidated Scorecard", "Scorecard Consolidated Dashboard", "consolidated dashboard query", "consolidated scorecard", "post-sales scorecard", or any semantic variation — use the get_sales_funnel tool with metric='consolidated_scorecard' and the start_date/end_date provided by the user. If the user does not specify a date range, ask them for it before calling the tool. Location filtering is supported via the 'locations' parameter.
-3. For Ageing Analysis requests — whenever the user says "Ageing Analysis", "Aging Analysis", "Ageing Analysis - Consolidated Dashboard Query", "ageing dashboard", "aging dashboard", or any semantic variation — use the get_sales_funnel tool with metric='ageing_analysis'. No dates are needed (current-state snapshot). Location filtering is supported via the 'locations' parameter.
-3. For schema exploration, use catalog tools (get_tables_summary, search_tables, get_table_schema, etc.)
-4. For questions about policies, procedures, SOPs, villa information, guest guidelines, operational documentation, or Goa building/construction regulations (DCR norms, FAR/FSI, setbacks, zoning, parking, fire safety, building heights, plot coverage, sub-division rules, land development regulations), use the query_knowledge_base tool
-5. If a question is ambiguous, prefer data tools for metrics/numbers and the knowledge base for qualitative/procedural/regulatory questions
-6. If the knowledge base tool returns an error (e.g., access error, permission denied), tell the user clearly that the knowledge base is temporarily unavailable and suggest they contact their team for the information directly. Do NOT say "I wasn't able to find information" — be specific about the issue.
-7. Present results to users in a clear, professional format
+1. For named reports and scorecards (e.g. "Score Card MTD", "LYMTD Scorecard", "YTD Scorecard", "Orderbook", "conversion rates", or any query whose name matches a predefined report), ALWAYS use the run_predefined_query tool. Pass a search term that closely matches the report name (e.g. "Score Card MTD Isprava", "LYMTD Scorecard Isprava", "lead to prospect conversion"). Do NOT use get_sales_funnel for these — the predefined query catalog contains the correct, fully-formed SQL for these reports.
+2. For standalone sales funnel metrics questions (Leads, Prospects, Accounts, Sales counts for a date range) that are NOT part of a named scorecard report, use the get_sales_funnel tool.
+3. For Consolidated Dashboard / Consolidated Scorecard requests — whenever the user says "Consolidated Dashboard", "Consolidated Scorecard", "Scorecard Consolidated Dashboard", "consolidated dashboard query", "consolidated scorecard", "post-sales scorecard", or any semantic variation — use the get_sales_funnel tool with metric='consolidated_scorecard' and the start_date/end_date provided by the user. If the user does not specify a date range, ask them for it before calling the tool. Location filtering is supported via the 'locations' parameter.
+4. For Ageing Analysis requests — whenever the user says "Ageing Analysis", "Aging Analysis", "Ageing Analysis - Consolidated Dashboard Query", "ageing dashboard", "aging dashboard", or any semantic variation — use the get_sales_funnel tool with metric='ageing_analysis'. No dates are needed (current-state snapshot). Location filtering is supported via the 'locations' parameter.
+5. For schema exploration, use catalog tools (get_tables_summary, search_tables, get_table_schema, etc.)
+6. For questions about policies, procedures, SOPs, villa information, guest guidelines, operational documentation, or Goa building/construction regulations (DCR norms, FAR/FSI, setbacks, zoning, parking, fire safety, building heights, plot coverage, sub-division rules, land development regulations), use the query_knowledge_base tool
+7. If a question is ambiguous, prefer data tools for metrics/numbers and the knowledge base for qualitative/procedural/regulatory questions
+8. If the knowledge base tool returns an error (e.g., access error, permission denied), tell the user clearly that the knowledge base is temporarily unavailable and suggest they contact their team for the information directly. Do NOT say "I wasn't able to find information" — be specific about the issue.
+9. Present results to users in a clear, professional format
 
 **IMPORTANT - User-Facing Responses:**
 - NEVER show query execution plans or technical query analysis details to users
@@ -285,12 +286,12 @@ You have access to the Lohono production database through MCP tools.
 - DO speak naturally as if you directly accessed the data
 
 **SQL Query Display:**
-When you execute a SQL query and present results, ALWAYS include the SQL query used in a markdown code block like this:
+When you execute a SQL query and present results, ALWAYS include the COMPLETE, UNABRIDGED SQL query in a markdown code block. Never shorten, truncate, or replace any part of the SQL with placeholder comments like \`-- ...\` or \`-- (additional joins)\` or similar. Show every line exactly as executed:
 \`\`\`sql
 SELECT * FROM table WHERE condition;
 \`\`\`
 
-The user wants business insights, not technical details. Keep responses focused on answering their question with data. Show the SQL query for transparency, but don't explain tool internals.`;
+The user wants business insights, not technical details. Keep responses focused on answering their question with data. Show the full SQL query for transparency, but don't explain tool internals.`;
 }
 
 // ── Claude client (singleton) ──────────────────────────────────────────────
