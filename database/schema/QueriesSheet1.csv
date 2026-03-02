@@ -3800,7 +3800,7 @@ and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('d
 AND maal_laao_at IS NULL
 AND status != 'closed'
 ORDER BY ageing DESC"
-Open Accounts - MTD | Isprava,"SELECT 
+Open Accounts - Isprava,"SELECT
     slug,
     name,
     current_stage,
@@ -3812,8 +3812,6 @@ Open Accounts - MTD | Isprava,"SELECT
 FROM development_opportunities
 WHERE current_stage= 'account'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%'
-and date(prospect_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-and date_part('day', prospect_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
 AND lower(name) != 'test')
 AND maal_laao_at IS NULL
 AND status != 'closed'
@@ -4964,7 +4962,7 @@ and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('d
 AND maal_laao_at IS NULL
 AND status != 'closed'
 ORDER BY ageing DESC"
-Open Accounts - Chapter,"SELECT 
+Open Accounts - Chapter,"SELECT
     slug,
     name,
     current_stage,
@@ -4975,10 +4973,8 @@ Open Accounts - Chapter,"SELECT
     INITCAP(replace(status,'_',' ')) as status
 FROM chapter_opportunities
 WHERE current_stage= 'account'
-AND (lower(name) not like '%test%' and lower(name) not like 'test%')
-and date(prospect_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-and date_part('day', prospect_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
-and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+AND (lower(name) not like '%test%' and lower(name) not like 'test%'
+and lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
 and lower(chapter_opportunities.name) != 'test')
 AND maal_laao_at IS NULL
 AND status != 'closed'
