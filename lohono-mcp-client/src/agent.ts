@@ -337,6 +337,25 @@ type ContentBlock =
   | Anthropic.Messages.ToolUseBlockParam
   | Anthropic.Messages.ToolResultBlockParam;
 
+/** Max chars to keep for a historical tool result in the message window.
+ *  Claude already consumed the full payload in the round it was received;
+ *  subsequent rounds only need enough context to follow the conversation. */
+const TOOL_RESULT_HISTORY_LIMIT = 2000;
+
+/** Rough token estimate: ~4 chars per token. */
+function estimateTokens(messages: ClaudeMessage[]): number {
+  return Math.ceil(JSON.stringify(messages).length / 4);
+}
+
+/** Drop oldest messages (keeping the first as context anchor) until the
+ *  estimated token count falls below budget. */
+function trimToBudget(messages: ClaudeMessage[], budget: number): ClaudeMessage[] {
+  while (messages.length > 2 && estimateTokens(messages) > budget) {
+    messages.splice(1, 1);
+  }
+  return messages;
+}
+
 export function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[] {
   const claude: ClaudeMessage[] = [];
   let currentRole: "user" | "assistant" | null = null;
@@ -378,16 +397,24 @@ export function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[]
         currentRole = "user";
         currentContent = [];
       }
+      // Truncate historical tool results — full payloads are the primary cause
+      // of context window overflows. Claude already used the full data in the
+      // round it was received; history only needs enough to follow the thread.
+      const content = msg.content.length > TOOL_RESULT_HISTORY_LIMIT
+        ? msg.content.slice(0, TOOL_RESULT_HISTORY_LIMIT) + "\n…[truncated]"
+        : msg.content;
       currentContent.push({
         type: "tool_result",
         tool_use_id: msg.toolUseId!,
-        content: msg.content,
+        content,
       });
     }
   }
   flush();
 
-  return claude;
+  // Safety net: drop oldest messages if still over the token budget,
+  // leaving 20k headroom for the response + system prompt + tools.
+  return trimToBudget(claude, 180_000);
 }
 
 // ── SSE Stream event types ────────────────────────────────────────────────
@@ -742,6 +769,7 @@ export async function* chatStream(
     // 4. Execute tool calls
     for (const tu of parsedToolBlocks) {
       toolCallCount++;
+      logInfo(`Tool call: ${tu.name}`, { tool: tu.name, input: tu.input });
       yield { event: "tool_start" as const, data: { name: tu.name, id: tu.id } };
 
       let resultText: string;
