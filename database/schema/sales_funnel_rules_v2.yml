@@ -232,6 +232,19 @@ funnel_stages:
     applies_date_filter: true
     applies_progressive_filter: true
 
+  outlook:
+    metric_name: "Outlook"
+    sort_order: 5
+    type: "orderbook_source"
+    description: "Orderbook actuals — total booked value in Crore (IST date-adjusted). Triggered by 'orderbook', 'orderbook actuals', 'outlook'."
+    count_expression: "COALESCE(SUM(amount_cr), 0)::int"
+    mandatory_conditions: []
+    mandatory_exclusions: []
+    applies_timezone: true
+    applies_date_filter: true
+    applies_progressive_filter: false
+    note: "Queries development_opportunity_properties joined with properties, locations, opportunities. Fixed slugs d-ref-a2ff7f98 and 7A5D8F55 are always included."
+
 # ============================================================================
 # METRICS DEFINITIONS
 # ============================================================================

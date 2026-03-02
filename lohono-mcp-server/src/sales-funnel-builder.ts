@@ -35,7 +35,7 @@ function getSlugExclusions(paramOffset: number): { clause: string; params: strin
 function getOpportunitiesTable(vertical: Vertical): string {
   switch (vertical) {
     case Vertical.THE_CHAPTER: return "chapter_opportunities";
-    default:                   return "development_opportunities";
+    default: return "development_opportunities";
   }
 }
 
@@ -68,7 +68,7 @@ function buildMultiSourceQuery(stage: FunnelStage, vertical: Vertical, locations
 
   // Slug and DnB exclusions are Isprava-only
   const slugExcl = isIsprava ? getSlugExclusions(3) : { clause: "", params: [] as string[] };
-  const dnbExcl  = isIsprava ? getDnBExclusion(3 + slugExcl.params.length, oppsTable) : { clause: "", params: [] as string[] };
+  const dnbExcl = isIsprava ? getDnBExclusion(3 + slugExcl.params.length, oppsTable) : { clause: "", params: [] as string[] };
 
   // Test name exclusions are Chapter-only
   const testNameExclOpps = isChapter
@@ -188,6 +188,125 @@ function buildJoinSourceQuery(stage: FunnelStage, vertical: Vertical, locations?
   return { sql, params: slugExcl.params };
 }
 
+/**
+ * Build SQL for an orderbook_source stage (Outlook / Orderbook Actuals).
+ * Aggregates development_opportunity_properties joined with properties, locations,
+ * and opportunities — filtered by maal_laao_at date range (IST) with fixed exclusions.
+ * Returns total booked value in Crore (rounded to int) as the matrix count.
+ */
+function buildOrderbookSourceQuery(stage: FunnelStage, _vertical: Vertical, locations?: string[]): ParameterizedQuery {
+  // Location filter on o.interested_location (ILIKE, OR-combined)
+  const locationFilter = locations && locations.length > 0
+    ? `AND (${locations.map(loc => `o.interested_location ILIKE '%${loc}%'`).join(" OR ")})`
+    : "";
+
+  const sql = `
+          -- ${stage.metric_name}
+          SELECT '${stage.metric_name}' as metric, COALESCE(SUM(amount_cr), 0)::int as count
+          FROM (
+            SELECT
+              SUM((op.budget_sales_consideration)::float) / 10000000 as amount_cr
+            FROM development_opportunity_properties op
+            LEFT JOIN development_properties p  ON op.development_property_id  = p.id
+            LEFT JOIN development_locations   l  ON l.id                        = p.development_location_id
+            LEFT JOIN development_opportunities o ON op.development_opportunity_id = o.id
+            WHERE p.include_in_reports = TRUE
+              AND p.deleted_at IS NULL
+              AND (
+                DATE(o.maal_laao_at + INTERVAL '330 minutes') BETWEEN $1 AND $2
+                OR o.slug = 'd-ref-a2ff7f98'
+                OR o.slug = '7A5D8F55'
+              )
+              AND p.name != 'Dattapada Estate 2'
+              ${locationFilter}
+            GROUP BY l.city, p.property_type
+          ) orderbook_data
+  `;
+
+  return { sql, params: [] };
+}
+
+/**
+ * Build the detailed orderbook breakdown query for Isprava.
+ * Returns one row per (city, property_type) with amount_cr and units_sold.
+ */
+function buildIspravaOrderbookDetailQuery(locations?: string[]): ParameterizedQuery {
+  const locationFilter = locations && locations.length > 0
+    ? `AND (${locations.map(loc => `o.interested_location ILIKE '%${loc}%'`).join(" OR ")})`
+    : "";
+
+  const sql = `
+    SELECT
+      l.city AS location,
+      p.property_type,
+      ROUND(SUM((p.budget_sales_consideration)::float / 10000000)::numeric, 2) AS amount_cr,
+      COUNT(op.id) AS units_sold
+    FROM development_opportunity_properties op
+    LEFT JOIN development_properties p ON op.development_property_id = p.id
+    LEFT JOIN development_locations l ON l.id = p.development_location_id
+    LEFT JOIN development_opportunities o ON op.development_opportunity_id = o.id
+    WHERE p.include_in_reports = TRUE
+      AND p.deleted_at IS NULL
+      AND (
+        DATE(o.maal_laao_at + INTERVAL '330 minutes') BETWEEN $1 AND $2
+        OR o.slug = 'd-ref-a2ff7f98'
+        OR o.slug = '7A5D8F55'
+      )
+      AND p.name != 'Dattapada Estate 2'
+      ${locationFilter}
+    GROUP BY l.city, p.property_type
+    ORDER BY l.city, p.property_type
+  `;
+
+  return { sql, params: [] };
+}
+
+/**
+ * Build the detailed orderbook breakdown query for The Chapter.
+ * Returns one row per city with property_type fixed as 'Chapter', amount_cr and units_sold.
+ */
+function buildChapterOrderbookDetailQuery(locations?: string[]): ParameterizedQuery {
+  const locationFilter = locations && locations.length > 0
+    ? `AND (${locations.map(loc => `o.interested_location ILIKE '%${loc}%'`).join(" OR ")})`
+    : "";
+
+  const sql = `
+    SELECT
+      COALESCE(l.city, 'Unclassified') AS location,
+      'Chapter' AS property_type,
+      ROUND(SUM((p.budget_sales_consideration)::float / 10000000)::numeric, 2) AS amount_cr,
+      COUNT(op.id)::int AS units_sold
+    FROM chapter_opportunity_properties op
+    LEFT JOIN chapter_properties p ON op.chapter_property_id = p.id
+    LEFT JOIN chapter_locations l ON l.id = p.chapter_location_id
+    LEFT JOIN chapter_opportunities o ON op.chapter_opportunity_id = o.id
+    WHERE p.include_in_reports = TRUE
+      AND p.deleted_at IS NULL
+      AND (
+        DATE(o.maal_laao_at + INTERVAL '330 minutes') BETWEEN $1 AND $2
+        OR o.slug = 'd-ref-a2ff7f98'
+      )
+      AND p.name != 'Dattapada Estate 2'
+      ${locationFilter}
+    GROUP BY l.city
+    ORDER BY location
+  `;
+
+  return { sql, params: [] };
+}
+
+/**
+ * Build the detailed orderbook breakdown query.
+ * Routes to the vertical-specific implementation.
+ * Returns one row per (location, property_type) with amount_cr and units_sold.
+ */
+export function buildOrderbookDetailQuery(vertical: Vertical, locations?: string[]): ParameterizedQuery {
+  if (vertical === Vertical.THE_CHAPTER) {
+    return buildChapterOrderbookDetailQuery(locations);
+  }
+  return buildIspravaOrderbookDetailQuery(locations);
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -207,6 +326,8 @@ export function buildMetricQuery(stageKey: string, vertical: Vertical, locations
       return buildSingleSourceQuery(stage, vertical, locations);
     case "join_source":
       return buildJoinSourceQuery(stage, vertical, locations);
+    case "orderbook_source":
+      return buildOrderbookSourceQuery(stage, vertical, locations);
     default:
       throw new Error(`Unknown stage type "${stage.type}" for metric "${stageKey}"`);
   }

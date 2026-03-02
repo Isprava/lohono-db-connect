@@ -528,6 +528,7 @@ export async function chat(
           const toolInput = tu.input as Record<string, unknown>;
           const isSalesFunnelTool = [
             'get_sales_funnel',
+            'get_orderbook',
             'get_leads',
             'get_prospects',
             'get_accounts',
@@ -755,6 +756,7 @@ export async function* chatStream(
           const toolInput = tu.input as Record<string, unknown>;
           const isSalesFunnelTool = [
             'get_sales_funnel',
+            'get_orderbook',
             'get_leads',
             'get_prospects',
             'get_accounts',

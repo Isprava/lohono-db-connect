@@ -68,7 +68,7 @@ export interface FunnelStages {
     [key: string]: FunnelStage;
 }
 
-export type FunnelStageType = "single_source" | "multi_source" | "join_source";
+export type FunnelStageType = "single_source" | "multi_source" | "join_source" | "orderbook_source";
 
 export interface FunnelStage {
     metric_name: string;
