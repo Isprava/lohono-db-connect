@@ -191,8 +191,14 @@ export function matchQueries(
   for (const entry of catalog) {
     let matched = 0;
     for (const st of searchTokens) {
+      // Short tokens (acronyms like ytd, lytd, mtd, lymtd) require an EXACT match
+      // to prevent "ytd" from matching "lytd" or "lymtd" via substring inclusion.
+      // Longer tokens still allow flexible substring matching in either direction.
+      const isShort = st.length <= 5;
       const hit = entry.tokens.some(
-        (tt) => tt.includes(st) || st.includes(tt),
+        (tt) => isShort
+          ? tt === st
+          : (tt.includes(st) || st.includes(tt)),
       );
       if (hit) matched++;
     }

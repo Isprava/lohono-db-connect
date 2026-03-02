@@ -4894,6 +4894,209 @@ and date_part('day',maal_laao_at + interval '330 minutes') <=
 and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
 and lower(chapter_opportunities.name) != 'test')
 )j on a.metric = j.metric "
+Scorecard - LYTD | Chapter,"SELECT 
+a.metric,
+leads + coalesce(leads2,0) as leads,
+coalesce(prospects,0) as Prospects,
+coalesce(accounts,0) as Accounts,
+coalesce(sales,0) as Sales,
+f.meetings,
+g.viewings,
+l2p::int,
+p2a::int,
+a2s::int
+
+FROM
+(
+SELECT 'Metric' as metric,
+  count(distinct(chapter_opportunities.slug)) as leads
+FROM chapter_opportunities
+WHERE (enquired_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+  AND (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+  and lower(chapter_opportunities.name) != 'test')
+  AND chapter_opportunities.source != 'DnB'
+) a
+
+left join
+(
+select 'Metric' as metric,
+      count(id) as leads2
+from enquiries
+WHERE enquiries.vertical='chapter'
+and enquiry_type='enquiry'
+and leadable_id is null
+and (created_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(enquiries.name) not like '%test%' and lower(enquiries.name) not like 'test%'
+and lower(enquiries.name) != 'test')
+) b on a.metric = b.metric
+
+left join
+(
+SELECT
+    'Metric' as metric,
+     count(distinct(chapter_opportunities.slug)) as prospects
+FROM chapter_opportunities
+WHERE (lead_completed_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)c on a.metric = c.metric 
+
+left join
+(
+SELECT
+      'Metric' as metric,
+      count(distinct(chapter_opportunities.slug)) as accounts
+FROM chapter_opportunities
+WHERE (prospect_completed_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)d on a.metric = d.metric 
+
+left join
+(
+SELECT
+    'Metric' as metric,
+    COUNT(distinct(chapter_opportunities.slug)) AS sales
+FROM chapter_opportunities
+WHERE (maal_laao_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)e on a.metric = e.metric 
+
+left join 
+(
+select
+    'Metric' as metric,
+    count(distinct(chapter_opportunities.slug)) as meetings
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join medium on tasks.medium_id=medium.id
+inner join chapter_opportunities on chapter_opportunities.id=activities.leadable_id
+WHERE (performed_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+AND activities.feedable_type='Task' and activities.leadable_type='Chapter::Opportunity'
+and ( medium.name='Meeting')
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)f on a.metric = f.metric
+
+left join
+(
+    select 'Metric' as metric,
+    count(distinct(chapter_opportunities.slug)) as viewings
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join medium on tasks.medium_id=medium.id
+inner join chapter_opportunities on chapter_opportunities.id=activities.leadable_id
+inner join staffs on staffs.id=chapter_opportunities.poc_exec_id
+where activities.feedable_type='Task' and activities.leadable_type='Chapter::Opportunity'
+and medium.name in ('Goa Viewing','Alibaug Viewing','Coonoor Viewing','Viewing','Site Visit')
+and (performed_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+) g on a.metric = g.metric
+
+left join 
+(
+SELECT
+    'Metric' as metric, 
+    avg(date(lead_completed_at + interval '330 minutes') - date(enquired_at + interval '330 minutes')) as l2p
+FROM chapter_opportunities
+WHERE (lead_completed_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)h on a.metric = h.metric 
+
+left join
+(
+SELECT
+      'Metric' as metric,
+      avg(date(prospect_completed_at + interval '330 minutes') - date(lead_completed_at + interval '330 minutes')) as p2a
+FROM chapter_opportunities
+WHERE (prospect_completed_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)i on a.metric = i.metric 
+
+left join
+(
+SELECT 
+    'Metric' as metric,
+    avg(date(maal_laao_at + interval '330 minutes') - date(prospect_completed_at + interval '330 minutes')) as a2s
+FROM chapter_opportunities
+WHERE (maal_laao_at + interval '330 minutes')::date BETWEEN 
+      MAKE_DATE(
+        CASE 
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        END, 4, 1)
+  AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
+)j on a.metric = j.metric "
 Open Leads Status MTD | Chapter,"select a.*, '-' as trash FROM
 (
 SELECT chapter_opportunities.slug,

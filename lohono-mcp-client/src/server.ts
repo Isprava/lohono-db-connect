@@ -308,11 +308,15 @@ app.get("/api/sessions/:id/messages/stream", chatLimiter, async (req: Request, r
     let userMessage = "Something went wrong. Please try again.";
     try {
       const raw = err instanceof Error ? err.message : String(err);
-      const parsed = JSON.parse(raw);
+      // Anthropic SDK error messages are prefixed with HTTP status: "429 {...}"
+      // Strip the status code prefix before parsing JSON.
+      const jsonStart = raw.indexOf('{');
+      const jsonStr = jsonStart !== -1 ? raw.slice(jsonStart) : raw;
+      const parsed = JSON.parse(jsonStr);
       if (parsed?.error?.type === "overloaded_error") {
         userMessage = "The AI service is currently busy. Please wait a moment and try again.";
       } else if (parsed?.error?.type === "rate_limit_error") {
-        userMessage = "Too many requests. Please wait a moment and try again.";
+        userMessage = "Rate limit reached — the session history is too large. Please start a new chat session and try again.";
       } else if (parsed?.error?.message) {
         userMessage = parsed.error.message;
       }

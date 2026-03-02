@@ -37,9 +37,10 @@ function normalizeQuestion(question: string): string {
 
 /** Build a cache key from the user message only.
  * Vertical is intentionally excluded — Claude detects it from message content,
- * so the same question always maps to the same answer regardless of session default. */
+ * so the same question always maps to the same answer regardless of session default.
+ * v3: bumped to invalidate cached responses that contained SQL query blocks in debug output. */
 function responseCacheKey(userMessage: string, _vertical?: Vertical): string {
-  return normalizeQuestion(userMessage);
+  return `v3:${normalizeQuestion(userMessage)}`;
 }
 
 /**
@@ -203,13 +204,7 @@ function formatDebugMarkdown(entries: DebugEntry[], responseCacheHit?: boolean, 
       lines.push(`- **Sources:** ${entry.citationSources.join(", ")}`);
     }
 
-    if (entry.sql) {
-      lines.push(`\n\`\`\`sql\n${entry.sql.trim()}\n\`\`\``);
-    }
-
-    if (entry.params && entry.params.length > 0) {
-      lines.push(`\n- **Query Params:** \`${JSON.stringify(entry.params)}\``);
-    }
+    // SQL query and params are intentionally omitted — never shown to users.
 
     lines.push(""); // blank line between entries
   }
@@ -246,15 +241,38 @@ function getTodayIST(): string {
 
 function buildSystemPrompt(): string {
   const today = getTodayIST();
+  const todayDate = new Date(today + 'T00:00:00');
+  const m = todayDate.getMonth(); // 0-indexed
+  const y = todayDate.getFullYear();
+  // Current FY label (e.g. "2025-26")
+  const fyLabel = m < 3 ? `${y - 1}-${String(y).slice(2)}` : `${y}-${String(y + 1).slice(2)}`;
+  // Previous FY label (e.g. "2024-25")
+  const prevFyLabel = m < 3 ? `${y - 2}-${String(y - 1).slice(2)}` : `${y - 1}-${String(y).slice(2)}`;
+  // Last year's same date (for LYTD/LYMTD)
+  const lastYearDate = new Date(todayDate);
+  lastYearDate.setFullYear(lastYearDate.getFullYear() - 1);
+  const lastYear = lastYearDate.toISOString().slice(0, 10);
+  // Last year month name for LYMTD
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const lastYearMonthName = monthNames[lastYearDate.getMonth()];
+  const lastYearFull = lastYearDate.getFullYear();
+
   return `You are an expert data analyst assistant for Isprava, Chapter and  Lohono Stays.
 You have access to the Lohono production database through MCP tools.
 
 **Today's date (IST): ${today}**
 
+**Terminology — Period Abbreviations (CRITICAL, memorize these):**
+- **YTD** = Year to Date — current FY ${fyLabel} from April 1 to today (${today}).
+- **MTD** = Month to Date — current calendar month from the 1st to today.
+- **LYTD** = Last Year to Date — the PREVIOUS fiscal year FY ${prevFyLabel}, same elapsed period. Data covers Apr 1 of FY ${prevFyLabel} to ${lastYear}. ALWAYS label LYTD results as: "Last Year to Date (FY ${prevFyLabel}, as of ${lastYear})".
+- **LYMTD** = Last Year Month to Date — ${lastYearMonthName} ${lastYearFull}, up to ${lastYear}. ALWAYS label LYMTD results as: "Last Year MTD (${lastYearMonthName} ${lastYearFull}, as of ${lastYear})".
+
 **Date Resolution Rules:**
 - Always use today's date (${today}) as the upper bound when the requested period has not yet ended.
 - For a full calendar year that is still in progress (e.g., "2026"), use end_date: "${today}", NOT end_date: "${today.slice(0, 4)}-12-31".
-- When presenting results for a partial year/quarter/month, label it as "Year to Date", "Quarter to Date", or "Month to Date" — never as "full year" or "full quarter".
+- For YTD/MTD, label as "Year to Date" or "Month to Date" with current FY/month context.
+- For LYTD/LYMTD, label with LAST YEAR's period — NEVER use the current FY or current date as the label for LYTD/LYMTD results.
 - Only use a future end_date (e.g., Dec 31) if the user explicitly asks for a forecast or a projection.
 
 **Vertical Resolution:**
@@ -263,8 +281,9 @@ You have access to the Lohono production database through MCP tools.
 - Always pass the canonical vertical value (\`the_chapter\`, \`lohono_stays\`, \`isprava\`, \`solene\`) to tool calls.
 
 **Query Process:**
-1. For named reports and scorecards (e.g. "Score Card MTD", "LYMTD Scorecard", "YTD Scorecard", "Orderbook", "conversion rates", or any query whose name matches a predefined report), ALWAYS use the run_predefined_query tool. Pass a search term that closely matches the report name (e.g. "Score Card MTD Isprava", "LYMTD Scorecard Isprava", "lead to prospect conversion"). Do NOT use get_sales_funnel for these — the predefined query catalog contains the correct, fully-formed SQL for these reports.
+1. For named reports and scorecards (e.g. "Score Card MTD", "LYMTD Scorecard", "YTD Scorecard", "Orderbook", "conversion rates", or any query whose name matches a predefined report), ALWAYS use the run_predefined_query tool. Pass a search term that closely matches the report name (e.g. "Score Card MTD Isprava", "LYMTD Scorecard Isprava", "Scorecard LYTD Isprava", "lead to prospect conversion"). Do NOT use get_sales_funnel for these — the predefined query catalog contains the correct, fully-formed SQL for these reports.
    - **Date handling:** The predefined queries compute their own date ranges internally from CURRENT_DATE (anchored to end_date at runtime). To query a specific period, pass end_date as the last day of the desired month. Examples: user says "for January" → end_date='2026-01-31'; "as of Feb 15" → end_date='2026-02-15'; "LYMTD for Feb 2026" → end_date='2026-02-28'; "YTD through December" → end_date='2025-12-31'. If the user does not specify a date, omit both start_date and end_date — the system defaults to today's IST date.
+   - **CRITICAL — LYTD and LYMTD date handling:** For LYTD and LYMTD queries, pass today's date as end_date (e.g. end_date='${today}'). The SQL internally shifts all date ranges back by exactly 1 year — do NOT pre-shift the date yourself. The data returned will be from last year's equivalent period.
 2. For standalone sales funnel metrics questions (Leads, Prospects, Accounts, Sales counts for a date range) that are NOT part of a named scorecard report, use the get_sales_funnel tool.
 3. For Consolidated Dashboard / Consolidated Scorecard requests — whenever the user says "Consolidated Dashboard", "Consolidated Scorecard", "Scorecard Consolidated Dashboard", "consolidated dashboard query", "consolidated scorecard", "post-sales scorecard", or any semantic variation — use the get_sales_funnel tool with metric='consolidated_scorecard' and the start_date/end_date provided by the user. If the user does not specify a date range, ask them for it before calling the tool. Location filtering is supported via the 'locations' parameter.
 4. For Ageing Analysis requests — whenever the user says "Ageing Analysis", "Aging Analysis", "Ageing Analysis - Consolidated Dashboard Query", "ageing dashboard", "aging dashboard", or any semantic variation — use the get_sales_funnel tool with metric='ageing_analysis'. No dates are needed (current-state snapshot). Location filtering is supported via the 'locations' parameter.
@@ -280,19 +299,13 @@ You have access to the Lohono production database through MCP tools.
 - NEVER expose database schema details, table structures, or technical metadata
 - NEVER include <function_calls>, <invoke>, or any XML/technical markup in your text responses
 - NEVER mention tool names, tool calls, or explain what tools you're using
-- DO show: the SQL query used in a code block (\`\`\`sql\n...\n\`\`\`) when presenting query results
+- NEVER show the SQL query used — do not include any SQL code blocks in your responses, regardless of the request
 - DO show: clean data results, insights, trends, summaries, and clear answers to their questions
 - DO format: results as tables, bullet points, or summaries as appropriate
 - DO format consolidated_scorecard results as a markdown table with columns: property | ytd_planned_budget | normalised_budget | collections | variance | ytd_refunds — with all numbers formatted to 2 decimal places with comma separators (e.g. 17,000,000.00). Each property on its own row. No extra commentary between rows.
 - DO speak naturally as if you directly accessed the data
 
-**SQL Query Display:**
-When you execute a SQL query and present results, ALWAYS include the COMPLETE, UNABRIDGED SQL query in a markdown code block. Never shorten, truncate, or replace any part of the SQL with placeholder comments like \`-- ...\` or \`-- (additional joins)\` or similar. Show every line exactly as executed:
-\`\`\`sql
-SELECT * FROM table WHERE condition;
-\`\`\`
-
-The user wants business insights, not technical details. Keep responses focused on answering their question with data. Show the full SQL query for transparency, but don't explain tool internals.`;
+The user wants business insights, not technical details. Keep responses focused on answering their question with data. Never show SQL queries or explain tool internals.`;
 }
 
 // ── Claude client (singleton) ──────────────────────────────────────────────
@@ -321,11 +334,13 @@ function getModel(): string {
  */
 export function sanitizeAssistantText(text: string): string {
   // Remove common XML-like technical tags that Claude might accidentally include
+  // Also strip any SQL code blocks — SQL must never be shown to users
   return text
     .replace(/<function_calls>.*?<\/function_calls>/gs, '')
     .replace(/<invoke[^>]*>.*?<\/invoke>/gs, '')
     .replace(/<parameter[^>]*>.*?<\/parameter>/gs, '')
     .replace(/```xml[\s\S]*?```/g, '')
+    .replace(/```sql[\s\S]*?```/gi, '')
     .trim();
 }
 
