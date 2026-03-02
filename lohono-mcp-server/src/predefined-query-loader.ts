@@ -191,8 +191,11 @@ export function matchQueries(
   for (const entry of catalog) {
     let matched = 0;
     for (const st of searchTokens) {
+      // Only allow title token to contain search token (tt.includes(st)),
+      // NOT the reverse. This prevents "lytd" from matching "ytd" because
+      // "lytd".includes("ytd") = true — they are distinct acronyms.
       const hit = entry.tokens.some(
-        (tt) => tt.includes(st) || st.includes(tt),
+        (tt) => tt === st || tt.includes(st),
       );
       if (hit) matched++;
     }

@@ -118,7 +118,7 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
     // ── Ambiguous ties — multiple queries with the same top score ────────
     const topScore = matches[0].score;
     const topMatches = matches.filter((m) => m.score === topScore);
-    if (topMatches.length > 1 && topScore < 1.0) {
+    if (topMatches.length > 1) {
       return {
         content: [{
           type: "text",
