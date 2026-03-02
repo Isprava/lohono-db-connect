@@ -54,6 +54,13 @@ const aclGlobalConfigCache = new RedisCache<{
   disabled_tools: string[];
 }>("acl:global_config", 0);
 
+// ── SQL block stripper ─────────────────────────────────────────────────────
+
+/** Remove all ```sql...``` code blocks from text before sending to the frontend. */
+function stripSqlBlocks(text: string): string {
+  return text.replace(/```sql[\s\S]*?```/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // ── Express app ────────────────────────────────────────────────────────────
 
 export const app = express();
@@ -293,10 +300,38 @@ app.get("/api/sessions/:id/messages/stream", chatLimiter, async (req: Request, r
       aborted = true;
     });
 
+    // Buffer text deltas so SQL code blocks can be stripped before sending
+    // to the frontend. Text naturally segments at tool_start / done events,
+    // so we flush (clean) the buffer at each non-text event boundary.
+    let textBuffer = "";
+
+    const flushText = () => {
+      if (!textBuffer) return;
+      const cleaned = stripSqlBlocks(textBuffer);
+      if (cleaned) {
+        res.write(`data: ${JSON.stringify({ event: "text_delta", data: { text: cleaned } })}\n\n`);
+      }
+      textBuffer = "";
+    };
+
     for await (const event of chatStream(id, message, req.user!.email, session.vertical)) {
       if (aborted) break;
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.event === "text_delta") {
+        textBuffer += event.data.text;
+      } else {
+        flushText();
+        if (event.event === "done") {
+          const cleanedEvent = {
+            ...event,
+            data: { ...event.data, assistantText: stripSqlBlocks(event.data.assistantText) },
+          };
+          res.write(`data: ${JSON.stringify(cleanedEvent)}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+        }
+      }
     }
+    flushText();
 
     if (!aborted) {
       res.end();

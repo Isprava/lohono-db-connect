@@ -280,7 +280,6 @@ You have access to the Lohono production database through MCP tools.
 - NEVER expose database schema details, table structures, or technical metadata
 - NEVER include <function_calls>, <invoke>, or any XML/technical markup in your text responses
 - NEVER mention tool names, tool calls, or explain what tools you're using
-- DO show: the SQL query used in a code block (\`\`\`sql\n...\n\`\`\`) when presenting query results
 - DO show: clean data results, insights, trends, summaries, and clear answers to their questions
 - DO format: results as tables, bullet points, or summaries as appropriate
 - DO format consolidated_scorecard results as a markdown table with columns: property | ytd_planned_budget | normalised_budget | collections | variance | ytd_refunds — with all numbers formatted to 2 decimal places with comma separators (e.g. 17,000,000.00). Each property on its own row. No extra commentary between rows.
@@ -337,6 +336,24 @@ type ContentBlock =
   | Anthropic.Messages.ToolUseBlockParam
   | Anthropic.Messages.ToolResultBlockParam;
 
+/** Max chars to keep for a historical tool result. Claude already consumed the
+ *  full result in the round it was received — subsequent rounds only need context. */
+const TOOL_RESULT_HISTORY_LIMIT = 2000;
+
+/** Rough token estimate: ~4 chars per token. */
+function estimateTokens(messages: ClaudeMessage[]): number {
+  return Math.ceil(JSON.stringify(messages).length / 4);
+}
+
+/** Drop oldest messages (preserving the first user message as anchor) until the
+ *  estimated token count falls below the budget. Always keeps the latest exchange. */
+function trimToBudget(messages: ClaudeMessage[], budget: number): ClaudeMessage[] {
+  while (messages.length > 2 && estimateTokens(messages) > budget) {
+    messages.splice(1, 1); // remove second message (keep first as context anchor)
+  }
+  return messages;
+}
+
 export function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[] {
   const claude: ClaudeMessage[] = [];
   let currentRole: "user" | "assistant" | null = null;
@@ -378,16 +395,25 @@ export function dbMessagesToClaudeMessages(dbMsgs: DbMessage[]): ClaudeMessage[]
         currentRole = "user";
         currentContent = [];
       }
+      // Truncate historical tool results — Claude already processed the full
+      // payload in the original round; carrying the entire response forward
+      // is the primary cause of context window overflows.
+      const content = msg.content.length > TOOL_RESULT_HISTORY_LIMIT
+        ? msg.content.slice(0, TOOL_RESULT_HISTORY_LIMIT) + "\n…[truncated for context window]"
+        : msg.content;
       currentContent.push({
         type: "tool_result",
         tool_use_id: msg.toolUseId!,
-        content: msg.content,
+        content,
       });
     }
   }
   flush();
 
-  return claude;
+  // Safety net: if estimated tokens still exceed Claude's limit, drop oldest
+  // messages until we're under budget (leaving ~20k headroom for the response).
+  const TOKEN_BUDGET = 180_000;
+  return trimToBudget(claude, TOKEN_BUDGET);
 }
 
 // ── SSE Stream event types ────────────────────────────────────────────────
@@ -665,15 +691,17 @@ export async function* chatStream(
   // 3. Agentic loop
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     // Use raw streaming API (async iterable) so we can yield from the generator
+    const claudeParams = {
+      model: getModel(),
+      max_tokens: 8192,
+      system: buildSystemPrompt(),
+      tools,
+      messages: claudeMessages,
+      stream: true as const,
+    };
+    console.log("[Claude SDK params]", JSON.stringify(claudeParams, null, 2));
     const stream = await claudeCircuitBreaker.execute(() =>
-      client.messages.create({
-        model: getModel(),
-        max_tokens: 8192,
-        system: buildSystemPrompt(),
-        tools,
-        messages: claudeMessages,
-        stream: true,
-      })
+      client.messages.create(claudeParams)
     );
 
     const textParts: string[] = [];
@@ -743,6 +771,7 @@ export async function* chatStream(
     // 4. Execute tool calls
     for (const tu of parsedToolBlocks) {
       toolCallCount++;
+      logInfo(`Tool call: ${tu.name}`, { tool: tu.name, input: tu.input });
       yield { event: "tool_start" as const, data: { name: tu.name, id: tu.id } };
 
       let resultText: string;

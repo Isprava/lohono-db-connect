@@ -109,7 +109,7 @@ export const getSalesFunnelPlugin: ToolPlugin = {
     const parsed = GetSalesFunnelInputSchema.parse(args);
     const { metric, vertical, locations } = parsed;
     const startTime = Date.now();
-
+    console.log("====METRIC====", metric);
     // ── Ageing Analysis path ────────────────────────────────────────────────
     if (metric === "ageing_analysis") {
       const cacheKey = `ageing:${(locations || []).sort().join(",")}`;
