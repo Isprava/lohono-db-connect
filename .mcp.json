@@ -4,9 +4,9 @@
       "command": "bash",
       "args": [
         "-c",
-        "set -a; source .env; set +a; export DB_HOST=localhost DATABASE_DIR=./database DB_SSL=false; exec npx tsx lohono-mcp-server/src/index.ts"
+        "set -a; source .env; set +a; export DB_HOST=localhost DATABASE_DIR=./database DB_SSL=true; exec npx tsx lohono-mcp-server/src/index.ts"
       ],
-      "cwd": "/home/aarya-desai/Projects/AILABS/lohono-db-connect"
+      "cwd": "/home/shaun/Documents/Projects/project-aida"
     }
   }
 }

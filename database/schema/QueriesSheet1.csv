@@ -3582,11 +3582,11 @@ SELECT 'Metric' as metric,
   count(distinct(development_opportunities.slug)) as leads
 FROM development_opportunities
 WHERE (enquired_at + interval '330 minutes')::date >= 
-        cast(date_trunc('month', (CURRENT_DATE - interval '1 year') + interval '330 minutes') AS date)
+        cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
   AND (enquired_at + interval '330 minutes')::date < 
-        cast(date_trunc('month', (CURRENT_DATE - interval '1 year') + interval '330 minutes' + INTERVAL '1 MONTH') AS date)
+        cast(date_trunc('month', CURRENT_DATE + interval '330 minutes' + INTERVAL '1 MONTH') AS date)
   AND date_part('day', enquired_at + interval '330 minutes') <= 
-        date_part('day', (now() - interval '1 year') + interval '330 minutes')
+        date_part('day', now() + interval '330 minutes')
   AND development_opportunities.slug NOT IN ('569657C6','5EB1A14A','075E54DF')
   and development_opportunities.source != 'DnB'
 ) a
@@ -3600,11 +3600,11 @@ WHERE enquiries.vertical='development'
 and enquiry_type='enquiry'
 and leadable_id is null
 and (created_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month', (CURRENT_DATE - interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
 and (created_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',created_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 ) b on a.metric = b.metric
 
 left join
@@ -3616,9 +3616,9 @@ FROM development_opportunities
 WHERE (lead_completed_at + interval '330 minutes')::date >=
     cast(date_trunc('month',(CURRENT_DATE-interval '1 year') + interval '330 minutes') AS date)
 and (lead_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',lead_completed_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF'))c on a.metric = c.metric 
 
 left join
@@ -3628,11 +3628,11 @@ SELECT
       count(distinct(development_opportunities.slug)) as accounts
 FROM development_opportunities
 WHERE (prospect_completed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (prospect_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',prospect_completed_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 )d on a.metric = d.metric 
 
@@ -3643,11 +3643,11 @@ SELECT
     COUNT(distinct(development_opportunities.slug)) AS sales
 FROM development_opportunities
 WHERE (maal_laao_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (maal_laao_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',maal_laao_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 )e on a.metric = e.metric 
 
@@ -3661,11 +3661,11 @@ inner join activities on tasks.id= activities.feedable_id
 inner join medium on tasks.medium_id=medium.id
 inner join development_opportunities on development_opportunities.id=activities.leadable_id
 WHERE (performed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (performed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',performed_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 AND activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
 and ( medium.name='Meeting'))f on a.metric = f.metric
 
@@ -3681,11 +3681,11 @@ inner join staffs on staffs.id=development_opportunities.poc_exec_id
 where activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
 and medium.name in ('Goa Viewing','Alibaug Viewing','Coonoor Viewing','Viewing','Site Visit')
 and (performed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (performed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE- interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',performed_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 ) g on a.metric = g.metric
 
 left join 
@@ -3695,11 +3695,11 @@ SELECT
     avg(date(lead_completed_at + interval '330 minutes') - date(enquired_at + interval '330 minutes')) as l2p
 FROM development_opportunities
 WHERE (lead_completed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE - interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (lead_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE - interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',lead_completed_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF'))h on a.metric = h.metric 
 
 left join
@@ -3709,11 +3709,11 @@ SELECT
       avg(date(prospect_completed_at + interval '330 minutes') - date(lead_completed_at + interval '330 minutes')) as p2a
 FROM development_opportunities
 WHERE (prospect_completed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE - interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (prospect_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE - interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',prospect_completed_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 )i on a.metric = i.metric 
 
@@ -3724,11 +3724,11 @@ SELECT
     avg(date(maal_laao_at + interval '330 minutes') - date(prospect_completed_at + interval '330 minutes')) as a2s
 FROM development_opportunities
 WHERE (maal_laao_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',(CURRENT_DATE - interval '1 year') + interval '330 minutes') AS date)
+    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (maal_laao_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',(CURRENT_DATE - interval '1 year') + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
+    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',maal_laao_at + interval '330 minutes') <= 
-    date_part('day',(now() - interval '1 year') + interval '330 minutes')
+    date_part('day',now() + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 )j on a.metric = j.metric "
 Open Leads- Isprava,"select a.*, '-' as trash FROM

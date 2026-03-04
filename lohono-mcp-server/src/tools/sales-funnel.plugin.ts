@@ -79,7 +79,8 @@ export const getSalesFunnelPlugin: ToolPlugin = {
       `For Consolidated Dashboard / Consolidated Scorecard requests — use metric='consolidated_scorecard' with start_date and end_date. ` +
       `For Ageing Analysis / Ageing Analysis - Consolidated Dashboard Query — use metric='ageing_analysis'. No dates needed; it is a current-state snapshot. ` +
       `CRITICAL: This is the ONLY correct way to query sales funnel or post-sales metrics. ` +
-      `DO NOT write custom SQL queries — the logic is complex and already implemented correctly in this tool.`,
+      `DO NOT write custom SQL queries — the logic is complex and already implemented correctly in this tool. ` +
+      `IMPORTANT EXCEPTION: Do NOT use this tool for named funnel reports such as "YTD Funnel", "LYTD Funnel", "FY Funnel", or "Weekly Insights" — use run_predefined_query for those instead.`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -108,6 +109,13 @@ export const getSalesFunnelPlugin: ToolPlugin = {
     const parsed = GetSalesFunnelInputSchema.parse(args);
     const { metric, vertical, locations } = parsed;
     const startTime = Date.now();
+    logger.info("get_sales_funnel called", {
+      metric,
+      vertical,
+      start_date: parsed.start_date,
+      end_date: parsed.end_date,
+      locations,
+    });
 
     // ── Ageing Analysis path ────────────────────────────────────────────────
     if (metric === "ageing_analysis") {

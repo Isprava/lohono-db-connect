@@ -1,0 +1,2468 @@
+Repeat Guests,"WITH query_482 AS (
+select count(sub_query.count) as repeat_guest
+FROM
+(
+SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+)sub_query
+),
+query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_2 AS (
+SELECT NULL
+),
+query_491 AS (
+select cast(sum(query_3.secondary_to_primary) as int) as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3
+),
+query_490 AS (
+select cast(sum(query_3.primary_to_secondary) as int) as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3
+),
+query_498 AS (
+select count(sub_query.count) as repeat_guest
+from
+(
+select mobiles.mobile,count(mobiles.mobile) as count
+from rental_opportunities inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+inner join contacts on opportunity_contacts.contact_id=contacts.id
+inner join mobiles on mobiles.contactable_id=contacts.id
+where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+and mobiles.contactable_type='Contact'
+and mobiles.mobile != ''
+GROUP BY mobiles.mobile
+HAVING   COUNT(mobiles.mobile) > 1
+ORDER BY mobiles.mobile
+)sub_query
+)
+select (a.repeat_guest+b.secondary_to_primary+c.primary_to_secondary+d.repeat_guest) as repeat_guest
+from query_482 as a
+join query_491 as b
+join query_490 as c
+join query_498 as d"
+Average LTV with AOV,"WITH query_484 AS (
+select avg(sub_query.gmv) as ltv
+from(
+SELECT x.mobile,count(x.mobile),sum((breakdown ->> 'net_base_rate')::float * (breakdown ->>'currency_factor')::float) as gmv
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating,
+          breakdown
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (rental_reservations.status in ('booked','force_booked','hold'))
+    
+ ) x
+WHERE ranking = 1
+and x.mobile != '' 
+GROUP BY x.mobile
+HAVING   COUNT(x.mobile) > 1
+ORDER BY x.mobile
+)sub_query
+),
+query_535 AS (
+select cast(sum(sub_query.gmv) as int) as gmv
+from
+(SELECT resolved_at_date_ist as edate,sum((breakdown ->> 'net_base_rate')::float * (breakdown ->>'currency_factor')::float) as gmv
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,
+          tasks.rating AS rating,
+          breakdown
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (rental_reservations.status in ('booked','force_booked','hold'))
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+group by resolved_at_date_ist
+) sub_query
+),
+query_536 AS (
+select cast(sum(sub_query.count) as int) as bookings
+from
+(
+SELECT resolved_at_date_ist as eDate,count(rating) as count
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (date_part('year',performed_at)=2021 or date_part('year',performed_at)=2020)
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+group by resolved_at_date_ist
+)sub_query
+),
+query_537 AS (
+select (query.gmv/query.bookings) as aov from
+(
+select * from query_535 as a
+join query_536 as b
+) query
+)
+select * from query_484 as a
+join query_537 as b"
+#Guests turning from Primary to Secondary,"WITH query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_2 AS (
+SELECT NULL
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+)
+select cast(sum(query_3.primary_to_secondary) as int) as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3"
+#Guests turning from Secondary to Primary,"WITH query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_2 AS (
+SELECT NULL
+)
+select cast(sum(query_3.secondary_to_primary) as int) as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3"
+Repeat Guest MTD,"WITH query_2 AS (
+SELECT NULL
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_551 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+group by query_1.mobile
+)query_2
+),
+query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_548 AS (
+select case when sum(query_3.primary_to_secondary)is not null then cast(sum(query_3.primary_to_secondary) as int) else 0 end as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',opportunity_contacts.created_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3
+),
+query_549 AS (
+select case when sum(query_3.secondary_to_primary)>0 then cast(sum(query_3.secondary_to_primary) as int)
+else 0 end as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3
+)
+select (a.repeat_guest+c.secondary_to_primary+b.primary_to_secondary) as repeat_guest
+from query_551 as a
+join query_548 as b
+join query_549 as c"
+Repeat as a % of Overall Users,"WITH query_482 AS (
+select count(sub_query.count) as repeat_guest
+FROM
+(
+SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+)sub_query
+),
+query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_2 AS (
+SELECT NULL
+),
+query_491 AS (
+select cast(sum(query_3.secondary_to_primary) as int) as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3
+),
+query_490 AS (
+select cast(sum(query_3.primary_to_secondary) as int) as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3
+),
+query_498 AS (
+select count(sub_query.count) as repeat_guest
+from
+(
+select mobiles.mobile,count(mobiles.mobile) as count
+from rental_opportunities inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+inner join contacts on opportunity_contacts.contact_id=contacts.id
+inner join mobiles on mobiles.contactable_id=contacts.id
+where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+and mobiles.contactable_type='Contact'
+and mobiles.mobile != ''
+GROUP BY mobiles.mobile
+HAVING   COUNT(mobiles.mobile) > 1
+ORDER BY mobiles.mobile
+)sub_query
+),
+query_499 AS (
+select (a.repeat_guest+b.secondary_to_primary+c.primary_to_secondary+d.repeat_guest) as repeat_guest
+from query_482 as a
+join query_491 as b
+join query_490 as c
+join query_498 as d
+),
+query_530 AS (
+SELECT count(distinct(x.mobile)) as count1
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is true)
+   and mobiles.contactable_type='Contact'
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+),
+query_531 AS (
+SELECT count(distinct(x.mobile)) as count2
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+),
+query_532 AS (
+select (sub_query.count1 + sub_query.count2) as all_users
+from
+(
+select *  from query_530 as a
+join query_531 as b
+) sub_query
+)
+select cast((sub_query.repeat_guest*100.00/sub_query.all_users) as float) as percentage
+from
+(
+select * from query_499 as a
+join query_532 as b
+)sub_query"
+Average Number of Days between Two Trips,"select cast(avg(query1.diff) as int)as average_number_of_days
+FROM
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query1"
+Repeat Guest Duration Distribution,"WITH query_495 AS (
+select query1.diff as days
+FROM
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query1
+where (query1.diff is not null)
+),
+query_496 AS (
+select 'Within 1 Month' as month,count(CASE
+                 WHEN days >= 0 and days <=30  THEN 1
+             END) as count,count(days) as total
+from query_495
+union
+select 'Within 2 Months' as month,count(CASE
+                 WHEN days > 30 and days <=60  THEN 1
+             END) AS count,count(days) as total
+from query_495      
+union
+select 'Within 3 Months' as month,count(CASE
+                 WHEN days > 60 and days <=90  THEN 1
+             END) AS count,count(days) as total
+from query_495
+union
+select 'Within 4 Months' as month,count(CASE
+                 WHEN days > 90 and days <=120  THEN 1
+             END) AS count,count(days) as total
+from query_495
+union
+select 'More than 4 Months' as month,count(CASE
+                 WHEN days > 120  THEN 1
+             END) AS count,count(days) as total
+from query_495
+)
+select month,(count*100/total) as distribution from query_496
+ORDER BY CASE WHEN month = 'Within 1 Month' THEN '1'
+              WHEN month = 'Within 2 Months' THEN '2'
+              WHEN month = 'Within 3 Months' THEN '3'
+              WHEN month = 'Within 4 Months' THEN '4'
+              ELSE month END"
+Average Transaction Repeat Time (#Days between last Checkout to next Booking),"select cast(avg(query1.diff) as int)as average_number_of_days
+FROM
+(
+SELECT 
+ sub_query.*, sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS difference, 
+ sub_query.performed_at - LAG(sub_query.check_out) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_out) AS diff 
+FROM
+(
+select b.mobile,a.check_out,b.performed_at,a.check_in
+from
+(SELECT mobile,x.check_out,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_out, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT x.performed_at,mobile
+FROM
+  (SELECT date(tasks.performed_at) as performed_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile,x.performed_at
+HAVING   COUNT(mobile) > 1
+) as b on a.mobile=b.mobile
+)sub_query
+)query1
+where (query1.difference is null)"
+Transaction Repeat Duration Distribution,"WITH query_542 AS (
+select abs(diff) as days
+FROM
+(
+SELECT 
+ sub_query.*, sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS difference, 
+ sub_query.performed_at - LAG(sub_query.check_out) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_out) AS diff 
+FROM
+(
+select b.mobile,a.check_out,b.performed_at,a.check_in
+from
+(SELECT mobile,x.check_out,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_out, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT x.performed_at,mobile
+FROM
+  (SELECT date(tasks.performed_at) as performed_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile,x.performed_at
+HAVING   COUNT(mobile) > 1
+) as b on a.mobile=b.mobile
+)sub_query
+)query1
+where (query1.difference is not null)
+),
+query_543 AS (
+select 'Within 3 Months' as month,count(CASE
+                 WHEN days > 0 and days <=90  THEN 1
+             END) as count,count(days) as total
+from query_542
+union
+select 'In 3-6 Months' as month,count(CASE
+                 WHEN days > 90 and days <=180 THEN 1
+             END) AS count,count(days) as total
+from query_542      
+union
+select 'In 6-9 Months' as month,count(CASE
+                 WHEN days > 180 and days <=270  THEN 1
+             END) AS count,count(days) as total
+from query_542
+union
+select 'In 9-12 Months' as month,count(CASE
+                 WHEN days > 275 and days <=360  THEN 1
+             END) AS count,count(days) as total
+from query_542
+union
+select 'More than a year' as month,count(CASE
+                 WHEN days > 360  THEN 1
+             END) AS count,count(days) as total
+from query_542
+)
+select month,cast(round((count*100/total),2) as int) as distribution from query_543
+ORDER BY CASE WHEN month = 'Within 3 Months' THEN '1'
+              WHEN month = 'In 3-6 Months' THEN '2'
+              WHEN month = 'In 6-9 Months' THEN '3'
+              WHEN month = 'In 9-12 Months' THEN '4'
+              ELSE month END"
+Repeat as % of Overall Bookings (monthwise),"WITH query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_555 AS (
+SELECT date_part('month',resolved_at_date_ist) as month,count(rating) as bookings
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+AND (date_part('month',resolved_at_date_ist)=date_part('month',now()) 
+or date_part('month',resolved_at_date_ist)=date_part('month',now())-1 
+or date_part('month',resolved_at_date_ist)=date_part('month',now())-2)
+and date_part('year',resolved_at_date_ist)=2022
+group by month
+),
+query_2 AS (
+SELECT NULL
+),
+query_551 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+group by query_1.mobile
+)query_2
+),
+query_556 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now() + interval '330 minutes')-1
+   and date_part('year',tasks.performed_at + interval '5 hours 30 minutes')=date_part('year',now() + interval '330 minutes')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+group by query_1.mobile
+)query_2
+),
+query_557 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now() + interval '330 minutes')-2
+   and date_part('year',tasks.performed_at + interval '5 hours 30 minutes')=date_part('year',now() + interval '330 minutes')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+group by query_1.mobile
+)query_2
+),
+query_558 AS (
+select (cast(12 as int)) as month,* from query_551
+union 
+select (cast(11 as int)) as month,* from query_556 
+union
+select (cast(10 as int)) as month,* from query_557
+)
+select case when query_1.month=1 then 'January'
+        when query_1.month=2 then 'February'
+        when query_1.month=3 then 'March'
+        when query_1.month=4 then 'April'
+        when query_1.month=5 then 'May'
+        when query_1.month=6 then 'June'
+        when query_1.month=7 then 'July'
+        when query_1.month=8 then 'August'
+        when query_1.month=9 then 'September'
+        when query_1.month=10 then 'October' 
+        when query_1.month=11 then 'November'
+        when query_1.month=12 then 'December'
+        end as month, query_1.percentage
+from
+(
+select sub_query.month,(sub_query.repeat_guest*100/sub_query.bookings) as percentage
+from
+(
+select a.month,a.bookings,b.repeat_guest from query_555 as a
+join query_558 as b on a.month=b.month
+)sub_query
+)query_1
+order by query_1.month asc"
+Repeat Guests,"WITH query_2 AS (
+SELECT NULL
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_504 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+where (query_1.diff!=0  or query_1.diff is not null)
+group by query_1.mobile
+)query_2
+),
+query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_491 AS (
+select cast(sum(query_3.secondary_to_primary) as int) as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3
+),
+query_490 AS (
+select cast(sum(query_3.primary_to_secondary) as int) as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3
+),
+query_498 AS (
+select count(sub_query.count) as repeat_guest
+from
+(
+select mobiles.mobile,count(mobiles.mobile) as count
+from rental_opportunities inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+inner join contacts on opportunity_contacts.contact_id=contacts.id
+inner join mobiles on mobiles.contactable_id=contacts.id
+where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+and mobiles.contactable_type='Contact'
+and mobiles.mobile != ''
+GROUP BY mobiles.mobile
+HAVING   COUNT(mobiles.mobile) > 1
+ORDER BY mobiles.mobile
+)sub_query
+)
+select (a.repeat_guest+b.secondary_to_primary+c.primary_to_secondary+d.repeat_guest) as repeat_guest
+from query_504 as a
+join query_491 as b
+join query_490 as c
+join query_498 as d"
+Average LTV with AOV,"WITH query_492 AS (
+select avg(sub_query.gmv) as ltv
+from(
+SELECT x.mobile,count(x.mobile),sum((breakdown ->> 'net_base_rate')::float * (breakdown ->>'currency_factor')::float) as gmv,x.check_in,x.check_out
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating, rental_opportunities.check_in,rental_opportunities.check_out,
+          breakdown
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (rental_reservations.status in ('booked','force_booked','hold'))
+    
+ ) x
+WHERE ranking = 1
+and x.mobile != '' 
+GROUP BY x.mobile,x.check_in,x.check_out
+HAVING   COUNT(x.mobile) > 1
+ORDER BY x.mobile
+)sub_query
+),
+query_535 AS (
+select cast(sum(sub_query.gmv) as int) as gmv
+from
+(SELECT resolved_at_date_ist as edate,sum((breakdown ->> 'net_base_rate')::float * (breakdown ->>'currency_factor')::float) as gmv
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,
+          tasks.rating AS rating,
+          breakdown
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (rental_reservations.status in ('booked','force_booked','hold'))
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+group by resolved_at_date_ist
+) sub_query
+),
+query_536 AS (
+select cast(sum(sub_query.count) as int) as bookings
+from
+(
+SELECT resolved_at_date_ist as eDate,count(rating) as count
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (date_part('year',performed_at)=2021 or date_part('year',performed_at)=2020)
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+group by resolved_at_date_ist
+)sub_query
+),
+query_537 AS (
+select (query.gmv/query.bookings) as aov from
+(
+select * from query_535 as a
+join query_536 as b
+) query
+)
+select * from query_492 as a
+join query_537 as b"
+#Guests turning from Primary to Secondary,"WITH query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_2 AS (
+SELECT NULL
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+)
+select cast(sum(query_3.primary_to_secondary) as int) as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3"
+#Guests turning from Secondary to Primary,"WITH query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_2 AS (
+SELECT NULL
+)
+select cast(sum(query_3.secondary_to_primary) as int) as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3"
+Repeat Guest MTD,"WITH query_2 AS (
+SELECT NULL
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_547 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+where (query_1.diff>=5 or query_1.diff is null)
+group by query_1.mobile
+)query_2
+),
+query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_548 AS (
+select case when sum(query_3.primary_to_secondary)is not null then cast(sum(query_3.primary_to_secondary) as int) else 0 end as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',opportunity_contacts.created_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3
+),
+query_549 AS (
+select case when sum(query_3.secondary_to_primary)>0 then cast(sum(query_3.secondary_to_primary) as int)
+else 0 end as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3
+)
+select (a.repeat_guest+c.secondary_to_primary+b.primary_to_secondary) as repeat_guest
+from query_547 as a
+join query_548 as b
+join query_549 as c"
+Repeat as a % of Overall Users,"WITH query_2 AS (
+SELECT NULL
+),
+query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_504 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+where (query_1.diff!=0  or query_1.diff is not null)
+group by query_1.mobile
+)query_2
+),
+query_3 AS (
+SELECT DATE(enquired_at), COUNT(enquired_at)
+FROM rental_opportunities
+WHERE DATE(enquired_at) >= DATE(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY DATE(enquired_at)
+order by date(enquired_at) asc
+),
+query_491 AS (
+select cast(sum(query_3.secondary_to_primary) as int) as secondary_to_primary
+from
+(
+select case when query_1.created_at < query_2.resolved_at then count(query_1.mobile) else 0 end as secondary_to_primary
+from
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_1
+inner join 
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)as query_2 on query_1.mobile=query_2.mobile
+group by query_1.created_at,query_2.resolved_at
+)query_3
+),
+query_490 AS (
+select cast(sum(query_3.primary_to_secondary) as int) as primary_to_secondary
+from(
+select case when query_2.created_at > query_1.resolved_at then count(query_1.mobile) else 0 end as primary_to_secondary
+from
+(SELECT mobile,resolved_at
+FROM
+  (SELECT tasks.performed_at as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as query_1
+inner JOIN
+(SELECT mobile as mobile,created_at
+FROM
+  (SELECT opportunity_contacts.created_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+)query_2 on query_1.mobile=query_2.mobile
+group by query_1.resolved_at,query_2.created_at
+)query_3
+),
+query_498 AS (
+select count(sub_query.count) as repeat_guest
+from
+(
+select mobiles.mobile,count(mobiles.mobile) as count
+from rental_opportunities inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+inner join contacts on opportunity_contacts.contact_id=contacts.id
+inner join mobiles on mobiles.contactable_id=contacts.id
+where opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+and mobiles.contactable_type='Contact'
+and mobiles.mobile != ''
+GROUP BY mobiles.mobile
+HAVING   COUNT(mobiles.mobile) > 1
+ORDER BY mobiles.mobile
+)sub_query
+),
+query_505 AS (
+select (a.repeat_guest+b.secondary_to_primary+c.primary_to_secondary+d.repeat_guest) as repeat_guest
+from query_504 as a
+join query_491 as b
+join query_490 as c
+join query_498 as d
+),
+query_530 AS (
+SELECT count(distinct(x.mobile)) as count1
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is true)
+   and mobiles.contactable_type='Contact'
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+),
+query_531 AS (
+SELECT count(distinct(x.mobile)) as count2
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, mobiles.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   inner join opportunity_contacts on rental_opportunities.id=opportunity_contacts.opportunity_id
+   inner join contacts on opportunity_contacts.contact_id=contacts.id
+   inner join mobiles on mobiles.contactable_id=contacts.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and opportunity_type = 'Rental::Opportunity' and (opportunity_contacts.is_primary is null or opportunity_contacts.is_primary is false)
+   and mobiles.contactable_type='Contact'
+   and rental_opportunities.source!='wildberrystays.com'
+ ) x
+WHERE ranking = 1
+),
+query_532 AS (
+select (sub_query.count1 + sub_query.count2) as all_users
+from
+(
+select *  from query_530 as a
+join query_531 as b
+) sub_query
+)
+select cast((sub_query.repeat_guest*100.00/sub_query.all_users) as float) as percentage
+from
+(
+select * from query_505 as a
+join query_532 as b
+)sub_query"
+Average Number of Days between Two Trips,"select cast(avg(query1.diff) as int)as average_number_of_days
+FROM
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query1
+where (query1.diff !=0)"
+Repeat Guest Duration Distribution,"WITH query_487 AS (
+select query1.diff as days
+FROM
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query1
+where (query1.diff !=0)
+),
+query_488 AS (
+select 'Within 1 Month' as month,count(CASE
+                 WHEN days > 0 and days <=30  THEN 1
+             END) as count,count(days) as total
+from query_487
+union
+select 'Within 2 Months' as month,count(CASE
+                 WHEN days > 30 and days <=60  THEN 1
+             END) AS count,count(days) as total
+from query_487       
+union
+select 'Within 3 Months' as month,count(CASE
+                 WHEN days > 60 and days <=90  THEN 1
+             END) AS count,count(days) as total
+from query_487 
+union
+select 'Within 4 Months' as month,count(CASE
+                 WHEN days > 90 and days <=120  THEN 1
+             END) AS count,count(days) as total
+from query_487
+union
+select 'More than 4 Months' as month,count(CASE
+                 WHEN days > 120  THEN 1
+             END) AS count,count(days) as total
+from query_487
+)
+select month,(count*100/total) as distribution from query_488
+ORDER BY CASE WHEN month = 'Within 1 Month' THEN '1'
+              WHEN month = 'Within 2 Months' THEN '2'
+              WHEN month = 'Within 3 Months' THEN '3'
+              WHEN month = 'Within 4 Months' THEN '4'
+              ELSE month END"
+Average Transaction Repeat Time (#Days between last Checkout to next Booking),"select cast(avg(query1.diff) as int)as average_number_of_days
+FROM
+(
+SELECT 
+ distinct(sub_query.*), sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS difference, 
+ sub_query.performed_at - LAG(sub_query.check_out) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_out) AS diff 
+FROM
+(
+select b.mobile,a.check_out,b.performed_at,a.check_in
+from
+(SELECT mobile,x.check_out,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_out, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT x.performed_at,mobile
+FROM
+  (SELECT date(tasks.performed_at) as performed_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile,x.performed_at
+HAVING   COUNT(mobile) > 1
+) as b on a.mobile=b.mobile
+)sub_query
+)query1"
+Transaction Repeat Duration Distribution,"WITH query_545 AS (
+select abs(diff) as days
+FROM
+(
+SELECT 
+ sub_query.*, sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS difference, 
+ sub_query.performed_at - LAG(sub_query.check_out) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_out) AS diff 
+FROM
+(
+select b.mobile,a.check_out,b.performed_at,a.check_in
+from
+(SELECT mobile,x.check_out,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_out, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT x.performed_at,mobile
+FROM
+  (SELECT date(tasks.performed_at) as performed_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile,x.performed_at
+HAVING   COUNT(mobile) > 1
+) as b on a.mobile=b.mobile
+)sub_query
+)query1
+where (query1.difference =0)
+)
+select a.month,cast(round((a.count*100/total),2) as int) as distribution from
+(select 'Within 3 Months' as month,count(CASE
+                 WHEN days > 0 and days <=90  THEN 1
+             END) as count,count(days) as total
+from query_545
+union
+select 'In 3-6 Months' as month,count(CASE
+                 WHEN days > 90 and days <=180 THEN 1
+             END) AS count,count(days) as total
+from query_545      
+union
+select 'In 6-9 Months' as month,count(CASE
+                 WHEN days > 180 and days <=270  THEN 1
+             END) AS count,count(days) as total
+from query_545
+union
+select 'In 9-12 Months' as month,count(CASE
+                 WHEN days > 275 and days <=360  THEN 1
+             END) AS count,count(days) as total
+from query_545
+union
+select 'More than a year' as month,count(CASE
+                 WHEN days > 360  THEN 1
+             END) AS count,count(days) as total
+from query_545
+) as a
+ORDER BY CASE WHEN a.month = 'Within 3 Months' THEN '1'
+              WHEN a.month = 'In 3-6 Months' THEN '2'
+              WHEN a.month = 'In 6-9 Months' THEN '3'
+              WHEN a.month = 'In 9-12 Months' THEN '4'
+              ELSE a.month END"
+Repeat as % of Overall Bookings (monthwise),"WITH query_1 AS (
+SELECT resolved_at_date_ist as booking_Date, array_agg(opportunity_slug), count(rating) as count
+FROM
+  (SELECT DATE(activities.resolved_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.opportunity_slug
+                      ORDER BY activities.resolved_at) AS ranking,
+          opportunity_slug,
+          activities.rating AS rating
+   FROM activities
+   INNER JOIN opportunities ON activities.opportunity_slug=opportunities.slug
+   WHERE opportunities.type = 'Rental::Opportunity'
+     AND (activities.rating = 'maal_laao' or activities.rating = 'partial_payment')
+     and date(enquired_at) > date(now() - interval '300 days')
+ ) x
+WHERE ranking = 1
+AND resolved_at_date_ist::timestamp >= date(now() - interval '7 days')
+group by resolved_at_date_ist order by resolved_at_date_ist desc
+),
+query_555 AS (
+SELECT date_part('month',resolved_at_date_ist) as month,count(rating) as bookings
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+AND (date_part('month',resolved_at_date_ist)=date_part('month',now()) 
+or date_part('month',resolved_at_date_ist)=date_part('month',now())-1 
+or date_part('month',resolved_at_date_ist)=date_part('month',now())-2)
+and date_part('year',resolved_at_date_ist)=2022
+group by month
+),
+query_2 AS (
+SELECT NULL
+),
+query_547 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now())
+   and date_part('year',tasks.performed_at)=date_part('year',now())
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+where (query_1.diff>=5 or query_1.diff is null)
+group by query_1.mobile
+)query_2
+),
+query_560 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now() + interval '330 minutes')-1
+   and date_part('year',tasks.performed_at)=date_part('year',now() + interval '330 minutes')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+where (query_1.diff>=10)
+group by query_1.mobile
+)query_2
+),
+query_561 AS (
+select count(query_2.repeat_guest) as repeat_guest from
+(
+select count(query_1.mobile) as repeat_guest from
+(
+SELECT 
+ sub_query.*, 
+ sub_query.check_in - LAG(sub_query.check_in) OVER (PARTITION BY sub_query.mobile ORDER BY sub_query.check_in) AS diff 
+FROM
+(
+select b.mobile,a.check_in
+from
+(SELECT mobile,x.check_in
+FROM
+  (SELECT rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile, rental_opportunities.check_in,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+ ) x
+WHERE ranking = 1
+) as a
+Inner JOIN
+(SELECT mobile,count(mobile) as count
+FROM
+  (SELECT (tasks.performed_at + interval '5 hours 30 minutes') as resolved_at,rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking, rental_opportunities.mobile as mobile,
+          tasks.rating AS rating
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and date_part('month',tasks.performed_at + interval '5 hours 30 minutes') = date_part('month',now() + interval '330 minutes')-2
+   and date_part('year',tasks.performed_at)=date_part('year',now() + interval '330 minutes')
+ ) x
+WHERE ranking = 1
+and mobile != ''
+GROUP BY mobile
+HAVING   COUNT(mobile) > 1
+ORDER BY count desc
+) as b on a.mobile=b.mobile
+)sub_query
+)query_1
+where (query_1.diff>=10)
+group by query_1.mobile
+)query_2
+),
+query_562 AS (
+select (cast(12 as int)) as month,* from query_547
+union 
+select (cast(11 as int)) as month,* from query_560
+union
+select (cast(10 as int)) as month,* from query_561
+)
+select case when query_1.month=1 then 'January'
+        when query_1.month=2 then 'February'
+        when query_1.month=3 then 'March'
+        when query_1.month=4 then 'April'
+        when query_1.month=5 then 'May'
+        when query_1.month=6 then 'June'
+        when query_1.month=7 then 'July'
+        when query_1.month=8 then 'August'
+        when query_1.month=9 then 'September'
+        when query_1.month=10 then 'October' 
+        when query_1.month=11 then 'November'
+        when query_1.month=12 then 'December'
+        end as month, query_1.percentage
+from
+(
+select sub_query.month,(sub_query.repeat_guest*100/sub_query.bookings) as percentage
+from
+(
+select a.month,a.bookings,b.repeat_guest from query_555 as a
+join query_562 as b on a.month=b.month
+)sub_query
+)query_1
+order by query_1.month asc"

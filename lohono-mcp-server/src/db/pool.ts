@@ -15,7 +15,7 @@ const pgConfig = {
   database: process.env.DB_NAME || "lohono_api_production",
   password: process.env.DB_PASSWORD || "",
   ssl:
-    process.env.DB_SSL === "false" || dbHost === "localhost"
+    process.env.DB_SSL === "false"
       ? false
       : { rejectUnauthorized: false },
 };

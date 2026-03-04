@@ -8,6 +8,7 @@ export interface QueryEntry {
   title: string;
   sql: string;
   tokens: string[];
+  variant?: "with_extensions" | "without_extensions";
 }
 
 // ── Path ───────────────────────────────────────────────────────────────────
@@ -27,11 +28,108 @@ function resolveDatabaseDir(): string {
 }
 
 const DATABASE_DIR = resolveDatabaseDir();
-const CSV_PATH = path.join(DATABASE_DIR, "schema", "QueriesSheet1.csv");
+const CSV_PATHS = [
+  path.join(DATABASE_DIR, "schema", "QueriesSheet1.csv"),
+  path.join(DATABASE_DIR, "schema", "QueriesSheet2.csv"),
+];
 
 // ── In-memory cache ────────────────────────────────────────────────────────
 
 let _catalog: QueryEntry[] | null = null;
+
+// ── SQL fixups ─────────────────────────────────────────────────────────────
+
+/**
+ * Convert bare `JOIN x` (no ON clause) to `CROSS JOIN x`.
+ *
+ * Redash-resolved CTEs often produce single-row results that the original
+ * dashboard combined implicitly. PostgreSQL requires explicit CROSS JOIN.
+ */
+function fixBareJoins(sql: string): string {
+  const lines = sql.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    // Only target lines that start with JOIN (ignoring leading whitespace)
+    // and do NOT already contain an ON clause on the same line
+    if (/^\s*join\s+/i.test(lines[i]) && !/\bon\b/i.test(lines[i])) {
+      // Check if the next non-empty line starts with ON
+      let nextNonEmpty = "";
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim()) {
+          nextNonEmpty = lines[j];
+          break;
+        }
+      }
+      if (!/^\s*on\b/i.test(nextNonEmpty)) {
+        lines[i] = lines[i].replace(/\bjoin\b/i, "CROSS JOIN");
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Rewrite Redash view references to production tables.
+ *
+ * The Redash environment has views (`activities` with extra columns,
+ * `opportunities` as a union view) that don't exist in production PostgreSQL.
+ * This rewrites the problematic CTE pattern (query_1 from Redash) to use
+ * the real `tasks`, `activities`, and `rental_opportunities` tables.
+ *
+ * Guard: only applies when SQL contains Redash view indicators.
+ */
+function rewriteRedashViews(sql: string): string {
+  // Guard: only apply when SQL contains Redash view indicators
+  if (
+    !sql.includes("activities.opportunity_slug") &&
+    !/FROM\s+activities[\s\S]*?JOIN\s+opportunities\b/i.test(sql)
+  ) {
+    return sql;
+  }
+
+  // Step 1: JOIN restructuring (must happen before column replacements)
+  sql = sql.replace(
+    /FROM\s+activities\s+INNER\s+JOIN\s+opportunities\s+ON\s+activities\.opportunity_slug\s*=\s*opportunities\.slug/gi,
+    "FROM tasks\n   INNER JOIN activities ON tasks.id = activities.feedable_id\n   INNER JOIN rental_opportunities ON rental_opportunities.id = activities.leadable_id",
+  );
+
+  // Step 2: WHERE clause fix
+  sql = sql.replace(
+    /WHERE\s+opportunities\.type\s*=\s*'Rental::Opportunity'/gi,
+    "WHERE activities.feedable_type = 'Task'\n     AND activities.leadable_type = 'Rental::Opportunity'",
+  );
+
+  // Step 3: Column replacements (prefixed references)
+  sql = sql.replace(/activities\.resolved_at/g, "tasks.performed_at");
+  sql = sql.replace(/activities\.opportunity_slug/g, "rental_opportunities.slug");
+  sql = sql.replace(/activities\.rating/g, "tasks.rating");
+
+  // Step 4: Bare column references (negative lookbehind to skip already-prefixed)
+  // Replace bare `enquired_at` with table-qualified version.
+  sql = sql.replace(/(?<!\w\.)enquired_at/g, "rental_opportunities.enquired_at");
+
+  // Step 5: Replace bare `opportunity_slug` contextually.
+  // In inner subquery SELECT lists: alias it so outer queries can reference it.
+  // In outer contexts (e.g. array_agg): keep the bare name (references subquery output).
+  // In PARTITION BY / other contexts inside subqueries: table-qualify it.
+  //
+  // Strategy: first alias the standalone SELECT-list item, then replace remaining
+  // bare references with the table-qualified form. The aliased column ensures
+  // outer queries that reference `opportunity_slug` still work.
+  sql = sql.replace(
+    /^(\s*)(?<!\w\.)opportunity_slug\s*,/gm,
+    "$1rental_opportunities.slug AS opportunity_slug,",
+  );
+  // Remaining bare opportunity_slug in function args like array_agg(opportunity_slug)
+  // reference subquery output — leave them as `opportunity_slug` (now aliased above).
+  // Only replace bare opportunity_slug that is NOT inside parentheses (i.e., not a
+  // function argument referencing subquery output).
+  sql = sql.replace(
+    /(?<!\w\.)(?<!AS )opportunity_slug(?!\s*,)(?!\s*\))/g,
+    "rental_opportunities.slug",
+  );
+
+  return sql;
+}
 
 // ── CSV parser ─────────────────────────────────────────────────────────────
 
@@ -98,6 +196,20 @@ function parseCsv(content: string): QueryEntry[] {
     sql = sql.replaceAll('""', '"');
     sql = sql.trim();
 
+    // Fix bare JOINs (no ON clause) → CROSS JOIN
+    // Redash-resolved CTEs produce single-row results joined together;
+    // PostgreSQL requires explicit CROSS JOIN for these.
+    sql = fixBareJoins(sql);
+
+    // Rewrite Redash view references (activities/opportunities) to
+    // production tables (tasks/activities/rental_opportunities).
+    sql = rewriteRedashViews(sql);
+
+    // Fix integer overflow: cast(... as int) → cast(... as bigint)
+    // Some aggregate sums (e.g. GMV totals) exceed 32-bit int range.
+    sql = sql.replace(/\bas\s+int\s*\)/gi, "as bigint)");
+
+
     if (sql) {
       entries.push({
         title,
@@ -148,21 +260,37 @@ function tokenize(s: string): string[] {
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Load and cache the predefined query catalog from QueriesSheet1.csv.
+ * Load and cache the predefined query catalog from all CSV files.
  */
 export function loadQueryCatalog(): QueryEntry[] {
   if (_catalog) return _catalog;
 
-  if (!fs.existsSync(CSV_PATH)) {
+  const available = CSV_PATHS.filter(fs.existsSync);
+  if (available.length === 0) {
     throw new Error(
-      `Predefined query catalog not found at ${CSV_PATH}. ` +
+      `Predefined query catalog not found. Looked in: ${CSV_PATHS.join(", ")}. ` +
       `Ensure DATABASE_DIR is set correctly.`
     );
   }
 
-  const raw = fs.readFileSync(CSV_PATH, "utf-8").replaceAll("\r\n", "\n");
-  _catalog = parseCsv(raw);
-  logger.info(`Loaded ${_catalog.length} predefined queries from ${CSV_PATH}`);
+  const all: QueryEntry[] = [];
+  for (const csvPath of available) {
+    const raw = fs.readFileSync(csvPath, "utf-8").replaceAll("\r\n", "\n");
+    const entries = parseCsv(raw);
+    logger.info(`Loaded ${entries.length} predefined queries from ${csvPath}`);
+
+    // Tag QueriesSheet2 entries: 1-11 = with_extensions, 12-22 = without_extensions
+    if (csvPath.endsWith("QueriesSheet2.csv")) {
+      const midpoint = 11;
+      entries.forEach((entry, idx) => {
+        entry.variant = idx < midpoint ? "with_extensions" : "without_extensions";
+      });
+    }
+
+    all.push(...entries);
+  }
+
+  _catalog = all;
   return _catalog;
 }
 
@@ -189,19 +317,30 @@ export function matchQueries(
   const results: MatchResult[] = [];
 
   for (const entry of catalog) {
-    let matched = 0;
+    let score = 0;
     for (const st of searchTokens) {
-      const hit = entry.tokens.some(
-        (tt) => tt.includes(st) || st.includes(tt),
-      );
-      if (hit) matched++;
+      if (entry.tokens.some((tt) => tt === st)) {
+        // Exact token match — full weight
+        score += 1;
+      } else if (entry.tokens.some((tt) => tt.includes(st) || st.includes(tt))) {
+        // Partial substring match — half weight
+        score += 0.5;
+      }
     }
-    const score = matched / searchTokens.length;
-    if (score > 0) {
-      results.push({ entry, score });
+    const normalizedScore = score / searchTokens.length;
+    if (normalizedScore > 0) {
+      results.push({ entry, score: normalizedScore });
     }
   }
 
-  results.sort((a, b) => b.score - a.score);
+  // Primary sort: score descending.
+  // Tiebreaker: shorter titles first — a query whose title has fewer unmatched
+  // tokens is a more precise match (e.g. "Closed Leads - Isprava" wins over
+  // "Closed Leads YTD- Isprava" when the search has no "ytd" token).
+  results.sort((a, b) => {
+    const scoreDiff = b.score - a.score;
+    if (Math.abs(scoreDiff) > 0.001) return scoreDiff;
+    return a.entry.tokens.length - b.entry.tokens.length;
+  });
   return results;
 }
