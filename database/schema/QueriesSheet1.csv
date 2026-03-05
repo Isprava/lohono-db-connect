@@ -2855,20 +2855,20 @@ LYTD Funnel - Chapter,"select * from
 select  a.metric,
     (coalesce((leads),0) + coalesce((leads2),0)) as count
     from
-(    
+(
 select 'Leads' as metric,
-count(distinct(development_opportunities.slug)) as leads
-FROM development_opportunities
-WHERE enquired_at::date BETWEEN 
+count(distinct(chapter_opportunities.slug)) as leads
+FROM chapter_opportunities
+WHERE date(enquired_at + interval '330 minutes') BETWEEN
       MAKE_DATE(
-        CASE 
-          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
-            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
-          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        CASE
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
-and development_opportunities.source != 'DnB'
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
 ) a
 
 left join
@@ -2876,64 +2876,69 @@ left join
 select 'Leads' as metric,
       count(id) as leads2
 from enquiries
-WHERE enquiries.vertical='development'
+WHERE enquiries.vertical='chapter'
 and enquiry_type='enquiry'
 and leadable_id is null
-and enquiries.created_at::date BETWEEN 
+and date(enquiries.created_at + interval '330 minutes') BETWEEN
       MAKE_DATE(
-        CASE 
-          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
-            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
-          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        CASE
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
+and (lower(enquiries.name) not like '%test%' and lower(enquiries.name) not like 'test%'
+and lower(enquiries.name) != 'test')
 ) b on a.metric=b.metric
 
-union 
+union
 
 SELECT 'Prospects' as metric,
-count(distinct(development_opportunities.slug)) as prospects
-FROM development_opportunities
-WHERE lead_completed_at::date BETWEEN 
+count(distinct(chapter_opportunities.slug)) as prospects
+FROM chapter_opportunities
+WHERE date(lead_completed_at + interval '330 minutes') BETWEEN
       MAKE_DATE(
-        CASE 
-          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
-            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
-          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        CASE
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
 
 union
 
 
 SELECT 'Accounts' as metric,
-      count(distinct(development_opportunities.slug)) as accounts
-FROM development_opportunities
-WHERE prospect_completed_at::date BETWEEN 
+      count(distinct(chapter_opportunities.slug)) as accounts
+FROM chapter_opportunities
+WHERE date(prospect_completed_at + interval '330 minutes') BETWEEN
       MAKE_DATE(
-        CASE 
-          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
-            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
-          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        CASE
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
 
-union 
+union
 
 SELECT  'Sales',
-        count(distinct(development_opportunities.slug))
-   FROM development_opportunities
-   WHERE maal_laao_at::date BETWEEN 
+        count(distinct(chapter_opportunities.slug))
+   FROM chapter_opportunities
+   WHERE date(maal_laao_at + interval '330 minutes') BETWEEN
       MAKE_DATE(
-        CASE 
-          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4 
-            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1 
-          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2 
+        CASE
+          WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 4
+            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
+          ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 2
         END, 4, 1)
   AND (CURRENT_DATE - INTERVAL '1 year')::date
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
+and lower(chapter_opportunities.name) != 'test')
 ) x
 order by case when metric='Leads' then '1'
               when metric = 'Prospects' then '2'
