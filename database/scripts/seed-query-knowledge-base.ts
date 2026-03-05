@@ -155,6 +155,161 @@ function deriveTags(title: string): string[] {
   return tags;
 }
 
+// ── Table filterable fields mapping ─────────────────────────────────────────
+// Maps each table to its filterable columns + filter type for richer embeddings
+
+interface FilterableField {
+  column: string;
+  type: "enum" | "date_range" | "numeric_range" | "boolean" | "text" | "jsonb";
+  description: string;
+}
+
+const TABLE_FILTERABLE_FIELDS: Record<string, FilterableField[]> = {
+  development_opportunities: [
+    { column: "current_stage", type: "enum", description: "stage: enquiry, prospect, account" },
+    { column: "status", type: "enum", description: "status: open, closed" },
+    { column: "interested_location", type: "enum", description: "location: Goa, Alibaug, Coonoor" },
+    { column: "enquired_at", type: "date_range", description: "enquiry date" },
+    { column: "source", type: "enum", description: "lead source: Google, Referral, Website" },
+    { column: "source_city", type: "enum", description: "source city: Mumbai, Delhi, Bangalore" },
+    { column: "source_region", type: "enum", description: "source region: North, South, West" },
+    { column: "source_country", type: "enum", description: "source country" },
+    { column: "min_budget", type: "numeric_range", description: "minimum budget" },
+    { column: "max_budget", type: "numeric_range", description: "maximum budget" },
+    { column: "min_bhk", type: "numeric_range", description: "minimum BHK" },
+    { column: "max_bhk", type: "numeric_range", description: "maximum BHK" },
+    { column: "interested_home_types", type: "enum", description: "home type: Villa, Apartment" },
+    { column: "estimated_purchase_date", type: "date_range", description: "estimated purchase date" },
+    { column: "lead_completed_at", type: "date_range", description: "lead completion date" },
+    { column: "prospect_completed_at", type: "date_range", description: "prospect completion date" },
+    { column: "maal_laao_at", type: "date_range", description: "site visit date" },
+    { column: "registration_date", type: "date_range", description: "registration date" },
+    { column: "client_communication_required", type: "boolean", description: "client communication required" },
+    { column: "meta->>'utm_source'", type: "text", description: "UTM source" },
+    { column: "meta->>'utm_campaign'", type: "text", description: "UTM campaign" },
+    { column: "meta->>'utm_medium'", type: "text", description: "UTM medium" },
+  ],
+  chapter_opportunities: [
+    { column: "current_stage", type: "enum", description: "stage: enquiry, prospect, account" },
+    { column: "status", type: "enum", description: "status: open, closed" },
+    { column: "interested_location", type: "enum", description: "location: Goa, Alibaug, Coonoor" },
+    { column: "enquired_at", type: "date_range", description: "enquiry date" },
+    { column: "source", type: "enum", description: "lead source: Google, Referral, Website" },
+    { column: "source_city", type: "enum", description: "source city: Mumbai, Delhi, Bangalore" },
+    { column: "source_region", type: "enum", description: "source region: North, South, West" },
+    { column: "source_country", type: "enum", description: "source country" },
+    { column: "bhk", type: "enum", description: "BHK type" },
+    { column: "min_budget", type: "numeric_range", description: "minimum budget" },
+    { column: "max_budget", type: "numeric_range", description: "maximum budget" },
+    { column: "interested_home_types", type: "enum", description: "home type: Villa, Apartment" },
+    { column: "estimated_purchase_date", type: "date_range", description: "estimated purchase date" },
+    { column: "lead_completed_at", type: "date_range", description: "lead completion date" },
+    { column: "prospect_completed_at", type: "date_range", description: "prospect completion date" },
+    { column: "maal_laao_at", type: "date_range", description: "site visit date" },
+    { column: "client_communication_required", type: "boolean", description: "client communication required" },
+    { column: "meta->>'utm_source'", type: "text", description: "UTM source" },
+    { column: "meta->>'utm_campaign'", type: "text", description: "UTM campaign" },
+    { column: "meta->>'utm_medium'", type: "text", description: "UTM medium" },
+  ],
+  agents: [
+    { column: "status", type: "enum", description: "agent status: active, inactive" },
+    { column: "verified", type: "boolean", description: "agent verified" },
+    { column: "agent_type", type: "enum", description: "agent type" },
+    { column: "vertical", type: "enum", description: "vertical: development, chapter" },
+    { column: "location", type: "enum", description: "agent location city" },
+    { column: "company_name", type: "text", description: "agent company name" },
+    { column: "source", type: "enum", description: "agent referral source" },
+    { column: "source_region", type: "enum", description: "agent region" },
+    { column: "commission", type: "numeric_range", description: "commission percentage" },
+    { column: "discount", type: "numeric_range", description: "discount percentage" },
+  ],
+  staffs: [
+    { column: "active", type: "boolean", description: "staff active status" },
+    { column: "verticals", type: "enum", description: "verticals: development, chapter, rental" },
+    { column: "role_id", type: "enum", description: "staff role" },
+    { column: "head_id", type: "enum", description: "reporting manager" },
+    { column: "location_ids", type: "enum", description: "staff locations" },
+  ],
+  stages: [
+    { column: "vertical", type: "enum", description: "vertical: development, chapter" },
+    { column: "code", type: "enum", description: "stage code: prospect, account, closed" },
+    { column: "active", type: "boolean", description: "stage active" },
+    { column: "sequence", type: "numeric_range", description: "stage order sequence" },
+  ],
+  stage_histories: [
+    { column: "leadable_type", type: "enum", description: "lead type: Development::Opportunity, Chapter::Opportunity" },
+    { column: "created_at", type: "date_range", description: "stage transition date" },
+    { column: "author_id", type: "enum", description: "staff who moved the stage" },
+  ],
+  tasks: [
+    { column: "rating", type: "enum", description: "task rating: maal_laao, closed, hot, warm, cold" },
+    { column: "performed_at", type: "date_range", description: "task performed date" },
+    { column: "medium_id", type: "enum", description: "communication medium: Call, Meeting, Email" },
+    { column: "author_id", type: "enum", description: "task created by staff" },
+    { column: "assignee_id", type: "enum", description: "task assigned to staff" },
+    { column: "closed_reason", type: "jsonb", description: "closed reason and explanation" },
+    { column: "deleted_at", type: "date_range", description: "soft delete date" },
+  ],
+  activities: [
+    { column: "leadable_type", type: "enum", description: "lead type: Development::Opportunity, Chapter::Opportunity" },
+    { column: "feedable_type", type: "enum", description: "activity type: Task, Note, Document" },
+    { column: "deleted_at", type: "date_range", description: "soft delete date" },
+    { column: "created_at", type: "date_range", description: "activity date" },
+  ],
+  enquiries: [
+    { column: "vertical", type: "enum", description: "vertical: development, chapter" },
+    { column: "enquiry_type", type: "enum", description: "enquiry type" },
+    { column: "location", type: "enum", description: "enquiry location" },
+    { column: "source", type: "enum", description: "enquiry source: Google, Referral, Website" },
+    { column: "source_city", type: "enum", description: "source city" },
+    { column: "source_region", type: "enum", description: "source region" },
+    { column: "is_trash", type: "boolean", description: "trash/spam enquiry" },
+    { column: "created_at", type: "date_range", description: "enquiry date" },
+    { column: "leadable_id", type: "enum", description: "NULL if unconverted enquiry" },
+  ],
+  rental_opportunities: [
+    { column: "status", type: "enum", description: "rental status" },
+    { column: "check_in", type: "date_range", description: "check-in date" },
+    { column: "check_out", type: "date_range", description: "check-out date" },
+    { column: "source", type: "enum", description: "booking source" },
+    { column: "property_id", type: "enum", description: "rental property" },
+    { column: "resolved_at", type: "date_range", description: "booking resolved date" },
+  ],
+  opportunities: [
+    { column: "status", type: "enum", description: "opportunity status" },
+    { column: "current_stage", type: "enum", description: "current stage" },
+    { column: "source", type: "enum", description: "opportunity source" },
+    { column: "vertical", type: "enum", description: "vertical" },
+  ],
+  contacts: [
+    { column: "name", type: "text", description: "contact name" },
+    { column: "email", type: "text", description: "contact email" },
+  ],
+  mobiles: [
+    { column: "mobile", type: "text", description: "mobile number for repeat guest matching" },
+  ],
+};
+
+/**
+ * Get filterable fields for a list of tables.
+ * Returns deduplicated field descriptions for embedding enrichment.
+ */
+function getFilterableFieldsForTables(tables: string[]): { fields: Record<string, FilterableField[]>; description: string } {
+  const fields: Record<string, FilterableField[]> = {};
+  const descParts: string[] = [];
+
+  for (const table of tables) {
+    const tableFields = TABLE_FILTERABLE_FIELDS[table];
+    if (tableFields) {
+      fields[table] = tableFields;
+      const fieldDescs = tableFields.map((f) => f.description);
+      descParts.push(`${table}: ${fieldDescs.join(", ")}`);
+    }
+  }
+
+  return { fields, description: descParts.join(" | ") };
+}
+
 // ── Derive vertical from title ──────────────────────────────────────────────
 
 function deriveVertical(title: string): string | null {
@@ -168,7 +323,7 @@ function deriveVertical(title: string): string | null {
 
 // ── Generate description from title (for embedding) ─────────────────────────
 
-function generateDescription(title: string, tags: string[]): string {
+function generateDescription(title: string, tags: string[], filterFieldsDesc: string): string {
   const parts = [title];
 
   if (tags.includes("mtd")) parts.push("month to date");
@@ -180,6 +335,11 @@ function generateDescription(title: string, tags: string[]): string {
   if (tags.includes("repeat_guests")) parts.push("repeat guest loyalty returning");
   if (tags.includes("ltv")) parts.push("lifetime value average order value");
 
+  // Append filterable fields context for richer embeddings
+  if (filterFieldsDesc) {
+    parts.push("filterable by: " + filterFieldsDesc);
+  }
+
   return parts.join(" | ");
 }
 
@@ -190,6 +350,7 @@ interface KnowledgeBaseEntry {
   description: string;
   sql: string;
   tables_used: string[];
+  filterable_fields: Record<string, FilterableField[]>;
   vertical: string | null;
   tags: string[];
   embedding: number[];
@@ -235,21 +396,25 @@ async function main() {
     const tablesUsed = extractTableNames(query.sql);
     const tags = deriveTags(query.title);
     const vertical = deriveVertical(query.title);
-    const description = generateDescription(query.title, tags);
+    const { fields: filterableFields, description: filterFieldsDesc } = getFilterableFieldsForTables(tablesUsed);
+    const description = generateDescription(query.title, tags, filterFieldsDesc);
 
     const embedding = await generateEmbedding(description);
+
+    const fieldCount = Object.values(filterableFields).reduce((sum, f) => sum + f.length, 0);
 
     knowledgeBase.push({
       name,
       description,
       sql: query.sql,
       tables_used: tablesUsed,
+      filterable_fields: filterableFields,
       vertical,
       tags,
       embedding,
     });
 
-    console.log(`  [${idx + 1}/${allQueries.length}] ${name} (${tablesUsed.length} tables, ${tags.length} tags)`);
+    console.log(`  [${idx + 1}/${allQueries.length}] ${name} (${tablesUsed.length} tables, ${tags.length} tags, ${fieldCount} filters)`);
   }
 
   // Write to JSON

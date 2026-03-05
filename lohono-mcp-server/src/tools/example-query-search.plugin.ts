@@ -6,11 +6,18 @@ import { logger } from "../../../shared/observability/src/logger.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
+interface FilterableField {
+  column: string;
+  type: "enum" | "date_range" | "numeric_range" | "boolean" | "text" | "jsonb";
+  description: string;
+}
+
 interface KnowledgeBaseEntry {
   name: string;
   description: string;
   sql: string;
   tables_used: string[];
+  filterable_fields?: Record<string, FilterableField[]>;
   vertical: string | null;
   tags: string[];
   embedding: number[];
@@ -89,7 +96,16 @@ function expandTokens(tokens: string[]): string[] {
 function scoreEntry(queryTokens: string[], entry: KnowledgeBaseEntry): number {
   const nameTokens = tokenize(entry.name);
   const descTokens = tokenize(entry.description);
-  const allEntryTokens = [...new Set([...nameTokens, ...descTokens, ...entry.tags])];
+
+  // Build filterable field tokens from field descriptions
+  const filterTokens: string[] = [];
+  if (entry.filterable_fields) {
+    for (const fields of Object.values(entry.filterable_fields)) {
+      for (const f of fields) {
+        filterTokens.push(...tokenize(f.description), ...tokenize(f.column));
+      }
+    }
+  }
 
   let score = 0;
   let maxPossible = queryTokens.length;
@@ -103,6 +119,10 @@ function scoreEntry(queryTokens: string[], entry: KnowledgeBaseEntry): number {
     else if (entry.tags.includes(qt)) {
       score += 0.8;
     }
+    // Exact match in filterable field descriptions
+    else if (filterTokens.some((ft) => ft === qt)) {
+      score += 0.7;
+    }
     // Exact match in description
     else if (descTokens.some((dt) => dt === qt)) {
       score += 0.6;
@@ -110,6 +130,10 @@ function scoreEntry(queryTokens: string[], entry: KnowledgeBaseEntry): number {
     // Partial substring match in name
     else if (nameTokens.some((nt) => nt.includes(qt) || qt.includes(nt))) {
       score += 0.4;
+    }
+    // Partial match in filterable fields
+    else if (filterTokens.some((ft) => ft.includes(qt) || qt.includes(ft))) {
+      score += 0.3;
     }
     // Partial match in description
     else if (descTokens.some((dt) => dt.includes(qt) || qt.includes(dt))) {
@@ -227,6 +251,7 @@ export const searchExampleQueriesPlugin: ToolPlugin = {
         description: r.entry.description,
         sql: r.entry.sql,
         tables_used: r.entry.tables_used,
+        filterable_fields: r.entry.filterable_fields || {},
         vertical: r.entry.vertical,
         tags: r.entry.tags,
         score: r.score.toFixed(4),
