@@ -13,9 +13,13 @@ export { getToolDefinitions as toolDefinitions_fn, handleToolCall } from "./tool
 import { registerPlugins } from "./tools/registry.js";
 import { salesFunnelPlugins } from "./tools/sales-funnel.plugin.js";
 import { predefinedQueryPlugins } from "./tools/predefined-query.plugin.js";
+import { exampleQuerySearchPlugins } from "./tools/example-query-search.plugin.js";
+import { dynamicQueryPlugins } from "./tools/dynamic-query.plugin.js";
 
 registerPlugins(...salesFunnelPlugins);
 registerPlugins(...predefinedQueryPlugins);
+registerPlugins(...exampleQuerySearchPlugins);
+registerPlugins(...dynamicQueryPlugins);
 
 // Re-export toolDefinitions as the array that index.ts and index-sse.ts expect
 import { getToolDefinitions } from "./tools/registry.js";

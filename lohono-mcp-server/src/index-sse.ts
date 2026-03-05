@@ -118,4 +118,5 @@ app.listen(PORT, () => {
     sse_endpoint: `http://localhost:${PORT}/sse`,
     health_endpoint: `http://localhost:${PORT}/health`,
   });
+
 });
