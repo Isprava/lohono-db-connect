@@ -1,0 +1,1965 @@
+Bookings,"select query_1.date,query_1.bookings1 as lohono,query_2.bookings2 as wildberry
+from
+(
+select t1.date, (t1.bookings) as bookings1
+from
+(SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as bookings
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT resolved_at_date_ist as eDate,count(distinct(slug)) as count
+FROM
+  (SELECT DATE(rental_reservations.confirmed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rental_opportunities.slug
+   FROM rental_opportunities
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where rental_opportunities.source not in ('wildberrystays.com','club_mahindra')
+   and (rental_reservations.status in ('booked','force_booked','hold'))
+                        and rental_opportunities.source!='ho_app'
+                      and rental_opportunities.status!='owner_blocked'
+                    and rental_opportunities.source not in ('club_mahindra')
+ ) x
+where resolved_at_date_ist::timestamp >= (now() + interval '5 hours 30 minutes' - interval '8 days')
+group by resolved_at_date_ist) as countTable
+on dateTable.date = countTable.eDate
+ order by dateTable.date desc
+) as t1
+order by t1.date asc
+) as query_1
+left JOIN
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as bookings2
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT resolved_at_date_ist as eDate,count(distinct(slug)) as count
+FROM
+  (SELECT DATE(rental_reservations.confirmed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rental_opportunities.slug
+   FROM rental_opportunities
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where (rental_reservations.status in ('booked','force_booked','hold'))
+   and source='wildberrystays.com'
+                        and rental_opportunities.source!='ho_app'
+                      and rental_opportunities.status!='owner_blocked'
+                    and rental_opportunities.source not in ('club_mahindra')
+ ) x
+WHERE resolved_at_date_ist::timestamp >= (now() + interval '5 hours 30 minutes' - interval '8 days')
+group by resolved_at_date_ist) as countTable
+on dateTable.date = countTable.eDate
+ order by dateTable.date desc
+) as query_2 on query_1.date=query_2.date
+order by query_1.date asc"
+GMV Net Collection,"select query_1.date, gmv + coalesce(cancellation,0) - coalesce(refunds/1.18,0) - coalesce(credit_utilised/1.18,0) as lohono FROM
+(
+SELECT date as date, coalesce(countTable.count,0) as gmv
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,14) i) AS dateTable
+LEFT JOIN
+(
+SELECT resolved_at_date_ist as eDate,sum(actual_net_base_rate((breakdown->>'preferred_rate')::FLOAT, (breakdown->>'net_base_rate')::FLOAT) * (breakdown ->>'currency_factor')::float) as count
+FROM
+  (
+SELECT DATE(rental_reservations.confirmed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          breakdown
+   FROM rental_opportunities 
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where  rental_opportunities.source!='wildberrystays.com'
+   and (rental_reservations.status in ('booked','force_booked'))
+   AND rental_opportunities.slug NOT IN ('CB62A812', 'BB80EC53', 'r-goo-96edefac', 'BDFDA003', '1F556553','DB6E5D4C')
+   and rental_opportunities.slug not in ('C0ED7C50','4EEFA0F2','6C0C0CB6')
+ ) x
+group by resolved_at_date_ist) as countTable
+on dateTable.date = countTable.eDate
+) query_1 
+
+left join
+(
+SELECT date as date, coalesce(countTable.count,0) as cancellation
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,14) i) AS dateTable
+LEFT JOIN
+(
+select date(rental_reservations.confirmed_at  + interval '330 minutes') as eDate,
+sum(COALESCE(NULLIF(cast(breakdown->>'preferred_rate' as FLOAT), 0), NULLIF(cast(breakdown->>'net_base_rate' as FLOAT), 0), 0) * (breakdown ->>'currency_factor')::float) as count
+from rental_opportunities
+inner join rental_reservations on rental_reservations.rental_opportunity_id=rental_opportunities.id
+where rental_reservations.status in ('cancelled')
+and rental_opportunities.slug not in ('C0ED7C50','4EEFA0F2','6C0C0CB6')
+and ((date_part('month',rental_reservations.confirmed_at  + interval '330 minutes')>=4 and date_part('year',rental_reservations.confirmed_at  + interval '330 minutes')=2024)
+or (date_part('month',rental_reservations.confirmed_at  + interval '330 minutes') < 4 and date_part('year',rental_reservations.confirmed_at  + interval '330 minutes')=2025))
+and rental_opportunities.source!='ho_app'
+and rental_opportunities.status!='owner_blocked'
+and rental_reservations.confirmed_at is not null
+and rental_opportunities.slug not in
+(
+SELECT slug
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,rental_opportunities.slug,
+          tasks.rating AS rating,
+          breakdown
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and (rental_reservations.status in ('booked','force_booked'))
+ ) x
+WHERE ranking = 1
+)
+group by eDate) as countTable
+on dateTable.date = countTable.eDate
+) query_2 on query_1.date=query_2.date
+
+left JOIN
+(
+SELECT date as date, coalesce(countTable.count,0) as refunds
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,14) i) AS dateTable
+LEFT JOIN
+(
+select date(created_at + interval '330 minutes') as eDate,
+sum(amount_refunded) as count
+from rental_refunds
+where rental_refunds.id != 811
+group by eDate) as countTable
+on dateTable.date = countTable.eDate
+) query_3 on query_1.date=query_3.date
+
+
+left JOIN
+(
+SELECT date as date, coalesce(countTable.count,0) as credit_utilised
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,14) i) AS dateTable
+LEFT JOIN
+(
+select date(credit_histories.created_at + interval '330 minutes') as eDate,
+sum(credit_histories.amount) as count
+from credit_histories
+left join rental_opportunities on rental_opportunities.id=credit_histories.opportunity_id
+where transaction_type='debit'
+and comment is null
+and credit_histories.type='CreditHistory'
+and rental_opportunities.slug not in
+(
+select rental_opportunities.slug
+from rental_opportunities
+inner join rental_reservations on rental_reservations.rental_opportunity_id=rental_opportunities.id
+inner join rental_properties on rental_properties.id=rental_reservations.rental_property_id
+left join staffs on staffs.id=rental_opportunities.poc_exec_id
+where rental_reservations.status in ('cancelled')
+--and date(rental_reservations.confirmed_at) between '2022-04-01' and '2023-03-31'
+and rental_opportunities.source!='ho_app'
+and rental_opportunities.status!='owner_blocked'
+)
+group by eDate) as countTable
+on dateTable.date = countTable.eDate
+) query_4 on query_1.date=query_4.date"
+Leads,"select t1.date, (t1.leads1 + t2.leads2) as lohono, (t3.leads3+t4.leads4) as wildberry
+from
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads1
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(enquired_at) as count, date(enquired_at + interval '5 hours 30 minutes') as eDate from rental_opportunities
+where date(enquired_at + interval '5 hours 30 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+and rental_opportunities.source!='wildberrystays.com'
+and rental_opportunities.source not in ('promotion_calls','ho_app','club_mahindra', 'service_call','ho_blockOI')
+                        and rental_opportunities.source!='ho_app'
+                      and rental_opportunities.status!='owner_blocked'
+                    and rental_opportunities.source not in ('club_mahindra')
+group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc
+ ) as t1
+ left JOIN
+ (
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads2
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+    (select date(created_at + interval '5 hours 30 minutes') as eDate,count(created_at) as count from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and source not in ('promotion_calls','ho_app','club_mahindra', 'service_call','ho_blockOI')
+     and date(created_at + interval '5 hours 30 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+    group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc 
+ ) as t2 on t1.date=t2.date
+left JOIN
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads3
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(enquired_at) as count, date(enquired_at + interval '5 hours 30 minutes') as eDate from rental_opportunities
+where date(enquired_at + interval '5 hours 30 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+and source='wildberrystays.com'
+                        and rental_opportunities.source!='ho_app'
+                      and rental_opportunities.status!='owner_blocked'
+                    and rental_opportunities.source not in ('club_mahindra')
+group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc
+ ) as t3 on t3.date=t2.date
+ left JOIN
+ (
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads4
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+    (select date(created_at + interval '5 hours 30 minutes') as eDate,count(created_at) as count from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and source='wildberrystays.com'
+                        and source!='ho_app'
+                      and source!='owner_blocked'
+                    and source not in ('club_mahindra')
+     and date(created_at + interval '5 hours 30 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+    group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc 
+ ) as t4 on t3.date=t4.date
+ order by t1.date asc"
+Digital Leads,"select t1.date, (t1.leads1 + t2.leads2) as lohono, (t3.leads3 + t4.leads4) as wildberry
+from   
+(
+SELECT 
+-- TO_CHAR(date,'dd Mon') 
+date
+as date, coalesce(countTable.count,0) as leads1
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(enquired_at) as count, date(enquired_at + interval '5 hours 30 minutes') as eDate from rental_opportunities
+where SOURCE IN ('SM',
+                 'facebook',
+                 'instagram',
+                 'social_media',
+                 'google',
+                 'Google'
+                 'website',
+                 'lohono.com',
+                 'isprava.com')
+and date(enquired_at) >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc
+ ) as t1
+ left JOIN
+ (SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads2
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+    (select date(created_at + interval '5 hours 30 minutes') as eDate,count(created_at) as count from enquiries
+     where vertical='rental' 
+     and leadable_id is null
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at) >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+     and source in ('SM',
+                 'facebook',
+                 'instagram',
+                 'social_media',
+                 'google',
+                 'Google',
+                 'website',
+                 'lohono.com',
+                 'isprava.com')
+    group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc 
+ ) as t2 on t1.date=t2.date
+ left JOIN
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads3
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(enquired_at) as count, date(enquired_at + interval '5 hours 30 minutes') as eDate from rental_opportunities
+where date(enquired_at) >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+and source='wildberrystays.com'
+group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc
+ ) as t3 on t3.date=t2.date
+ left JOIN
+ (
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as leads4
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+    (select date(created_at + interval '5 hours 30 minutes') as eDate,count(created_at) as count from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and source='wildberrystays.com'
+     and date(created_at) >= date(now() + interval '5 hours 30 minutes' - interval '8 days')
+    group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc 
+ ) as t4 on t3.date=t4.date
+ order by t1.date asc"
+Leads (Sourcewise),"SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.website,0) as website, coalesce(countTable.reference,0) as reference,coalesce(countTable.agent,0) as agent, coalesce(countTable.emailer,0) as emailer,
+coalesce(countTable.google,0) as google, coalesce(countTable.ota,0) as ota,
+coalesce(countTable.social_media,0) as social_media, coalesce(countTable.wildberry,0) as wildberry, coalesce(countTable.others,0) as others
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT date(enquired_at + interval '5 hours 30 minutes') as eDate,
+       count(CASE
+                 WHEN SOURCE='isprava.com' or SOURCE='website' or SOURCE='lohono.com' THEN 1
+             END) AS website,
+       count(CASE
+                 WHEN SOURCE='reference' or SOURCE='Reference' or SOURCE='word_of_mouth' or SOURCE='isprava' or SOURCE='lohono' THEN 1
+             END) AS reference,
+        count(CASE
+                 WHEN SOURCE='agent' or SOURCE='Agent' THEN 1
+             END) AS agent,
+        count(CASE
+                 WHEN SOURCE='instagram' or SOURCE='facebook' or SOURCE='other_leadgen' or SOURCE='social_media' or SOURCE='SM' THEN 1
+             END) AS social_media,
+        count(CASE
+                 WHEN SOURCE='emailer' THEN 1
+             END) AS emailer,
+        count(CASE
+                 WHEN SOURCE='google' or SOURCE='GS' THEN 1
+             END) AS google, 
+        count(CASE
+                 WHEN SOURCE='ota' THEN 1
+             END) AS ota,      
+        count(CASE
+                 WHEN SOURCE='Others' or SOURCE='other' or SOURCE='press' or SOURCE='event' or SOURCE='direct_mailer' or SOURCE='Direct Mailer' THEN 1
+             END) AS others,
+        count(CASE
+                 WHEN SOURCE='wildberrystays.com' THEN 1
+             END) AS wildberry
+FROM rental_opportunities
+where date(enquired_at) >= date(now() + interval '5 hours 30 minutes' - interval '7 days')
+GROUP BY eDate) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date asc"
+Prospects,"select t1.date,t1.prospects1 as lohono,t2.prospects2 as wildberry
+from
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as prospects1
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(rental_opportunities.id) as count, DATE(stage_histories.updated_at + interval '5 hours 30 minutes') as eDate FROM rental_opportunities
+  inner join stage_histories on rental_opportunities.id=stage_histories.leadable_id AND leadable_type='Rental::Opportunity'
+  inner join stages on stage_histories.stage_id=stages.id AND date(stage_histories.updated_at + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '7 days')
+  WHERE vertical = 'rental' AND code = 'prospect'
+  and rental_opportunities.source!='wildberrystays.com'
+                        and rental_opportunities.source!='ho_app'
+                      and rental_opportunities.status!='owner_blocked'
+                    and rental_opportunities.source not in ('club_mahindra')
+  group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc
+) as t1
+left join
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as prospects2
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(rental_opportunities.id) as count, DATE(enquired_at + interval '5 hours 30 minutes') as eDate FROM rental_opportunities inner join stage_histories on rental_opportunities.id=stage_histories.leadable_id AND leadable_type='Rental::Opportunity'
+inner join stages on stage_histories.stage_id=stages.id AND date(stage_histories.updated_at + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '7 days')
+WHERE vertical = 'rental' AND code = 'prospect'
+and source='wildberrystays.com'and rental_opportunities.source!='ho_app'
+                      and rental_opportunities.status!='owner_blocked'
+                    and rental_opportunities.source not in ('club_mahindra')
+group by eDate) AS countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date asc
+) as t2 on t1.date=t2.date
+order by t1.date asc"
+Digital Prospects,"SELECT t1.date,t1.digital_prospect as lohono,t2.prospects as wildberry
+FROM
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as digital_prospect
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(rental_opportunities.id) as count, DATE(stage_histories.updated_at + interval '5 hours 30 minutes') as eDate FROM rental_opportunities 
+  inner join stage_histories on rental_opportunities.id=stage_histories.leadable_id AND leadable_type='Rental::Opportunity'
+  inner join stages on stage_histories.stage_id=stages.id AND date(stage_histories.updated_at + interval '5 hours 30 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '7 days')
+  WHERE vertical = 'rental' AND code = 'prospect'
+  and SOURCE IN ('SM',
+                 'facebook',
+                 'instagram',
+                 'social_media',
+                 'google',
+                 'website',
+                 'lohono.com',
+                 'isprava.com')
+group by eDate) AS countTable
+   on dateTable.date = countTable.eDate
+ order by dateTable.date asc
+ ) as t1
+ left join
+ (
+ SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as prospects
+FROM
+  (SELECT date (now() + interval '5 hours 30 minutes' - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+  (select count(rental_opportunities.id) as count, DATE(enquired_at + interval '5 hours 30 minutes') as eDate FROM rental_opportunities inner join stage_histories on rental_opportunities.id=stage_histories.leadable_id AND leadable_type='Rental::Opportunity'
+inner join stages on stage_histories.stage_id=stages.id AND date(stage_histories.updated_at) >= date(now() + interval '5 hours 30 minutes' - interval '7 days')
+WHERE vertical = 'rental' AND code = 'prospect'
+and source='wildberrystays.com'
+group by eDate) AS countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date asc
+ ) as t2 on t1.date=t2.date
+ order by t1.date asc"
+Lead TAT Analysis - Calls,"select * from
+(
+select a.*, Calls_less_than_2_hours, Calls_less_than_4_hours, Calls_less_than_8_hours, Calls_less_than_24_hours,
+(total_leads - Calls_less_than_24_hours - Calls_less_than_8_hours - Calls_less_than_4_hours - Calls_less_than_2_hours)
+as Calls_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '1 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '1 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD' as metric, 
+count(slug) filter (where TAT<=120) as Calls_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as Calls_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as Calls_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as Calls_less_than_24_hours,
+count(slug) filter (where TAT>1440) as Calls_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from (created_at::TIMESTAMP - enquired_at::TIMESTAMP)))/60 as TAT
+FROM (
+        SELECT rental_opportunities.slug,resource_id,
+        enquired_at + interval '330 minutes' as enquired_at, call_logs.created_at + interval '330 minutes' as created_at,
+                RANK() OVER (PARTITION BY resource_id, resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE resource_type='Rental::Opportunity'
+          and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now() + interval '330 minutes' - interval '1 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--FTD-1
+union
+
+select a.*, Calls_less_than_2_hours, Calls_less_than_4_hours, Calls_less_than_8_hours, Calls_less_than_24_hours,
+(total_leads - Calls_less_than_24_hours - Calls_less_than_8_hours - Calls_less_than_4_hours - Calls_less_than_2_hours)
+as Calls_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD-1' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '2 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD-1'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '2 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD-1' as metric, 
+count(slug) filter (where TAT<=120) as Calls_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as Calls_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as Calls_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as Calls_less_than_24_hours,
+count(slug) filter (where TAT>1440) as Calls_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from (created_at::TIMESTAMP - enquired_at::TIMESTAMP)))/60 as TAT
+FROM (
+        SELECT rental_opportunities.slug,resource_id,
+        enquired_at + interval '330 minutes' as enquired_at, call_logs.created_at + interval '330 minutes' as created_at,
+                RANK() OVER (PARTITION BY resource_id, resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE resource_type='Rental::Opportunity'
+          and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now() + interval '330 minutes' - interval '2 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--FTD-2
+union
+
+select a.*, Calls_less_than_2_hours, Calls_less_than_4_hours, Calls_less_than_8_hours, Calls_less_than_24_hours,
+(total_leads - Calls_less_than_24_hours - Calls_less_than_8_hours - Calls_less_than_4_hours - Calls_less_than_2_hours)
+as Calls_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD-2' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '3 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD-2'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '3 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD-2' as metric, 
+count(slug) filter (where TAT<=120) as Calls_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as Calls_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as Calls_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as Calls_less_than_24_hours,
+count(slug) filter (where TAT>1440) as Calls_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from (created_at::TIMESTAMP - enquired_at::TIMESTAMP)))/60 as TAT
+FROM (
+        SELECT rental_opportunities.slug,resource_id,
+        enquired_at + interval '330 minutes' as enquired_at, call_logs.created_at + interval '330 minutes' as created_at,
+                RANK() OVER (PARTITION BY resource_id, resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE resource_type='Rental::Opportunity'
+          and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now() + interval '330 minutes' - interval '3 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--FTD-3 
+union
+
+select a.*, Calls_less_than_2_hours, Calls_less_than_4_hours, Calls_less_than_8_hours, Calls_less_than_24_hours,
+(total_leads - Calls_less_than_24_hours - Calls_less_than_8_hours - Calls_less_than_4_hours - Calls_less_than_2_hours)
+as Calls_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD-3' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '4 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD-3'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '4 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD-3' as metric, 
+count(slug) filter (where TAT<=120) as Calls_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as Calls_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as Calls_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as Calls_less_than_24_hours,
+count(slug) filter (where TAT>1440) as Calls_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from (created_at::TIMESTAMP - enquired_at::TIMESTAMP)))/60 as TAT
+FROM (
+        SELECT rental_opportunities.slug,resource_id,
+        enquired_at + interval '330 minutes' as enquired_at, call_logs.created_at + interval '330 minutes' as created_at,
+                RANK() OVER (PARTITION BY resource_id, resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE resource_type='Rental::Opportunity'
+          and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now() + interval '330 minutes' - interval '4 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--Last 7 Days 
+union
+
+select a.*, Calls_less_than_2_hours, Calls_less_than_4_hours, Calls_less_than_8_hours, Calls_less_than_24_hours,
+(total_leads - Calls_less_than_24_hours - Calls_less_than_8_hours - Calls_less_than_4_hours - Calls_less_than_2_hours)
+as Calls_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'Last 7 Days' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '6 days')
+and date(enquired_at  + interval '330 minutes') < date(now())
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'Last 7 Days' as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '6 days')
+     and date(created_at  + interval '330 minutes') < date(now())
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'Last 7 Days' as metric, 
+count(slug) filter (where TAT<=120) as Calls_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as Calls_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as Calls_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as Calls_less_than_24_hours,
+count(slug) filter (where TAT>1440) as Calls_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from (created_at::TIMESTAMP - enquired_at::TIMESTAMP)))/60 as TAT
+FROM (
+        SELECT rental_opportunities.slug,resource_id,
+        enquired_at + interval '330 minutes' as enquired_at, call_logs.created_at + interval '330 minutes' as created_at,
+                RANK() OVER (PARTITION BY resource_id, resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE resource_type='Rental::Opportunity'
+         and date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '6 days')
+         and date(enquired_at  + interval '330 minutes') < date(now())
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--Last 30 Days 
+union
+
+select a.*, Calls_less_than_2_hours, Calls_less_than_4_hours, Calls_less_than_8_hours, Calls_less_than_24_hours,
+(total_leads - Calls_less_than_24_hours - Calls_less_than_8_hours - Calls_less_than_4_hours - Calls_less_than_2_hours)
+as Calls_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'Last 30 Days' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '29 days')
+and date(enquired_at  + interval '330 minutes') < date(now())
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'Last 30 Days' as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '29 days')
+     and date(created_at  + interval '330 minutes') < date(now())
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'Last 30 Days' as metric, 
+count(slug) filter (where TAT<=120) as Calls_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as Calls_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as Calls_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as Calls_less_than_24_hours,
+count(slug) filter (where TAT>1440) as Calls_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from (created_at::TIMESTAMP - enquired_at::TIMESTAMP)))/60 as TAT
+FROM (
+        SELECT rental_opportunities.slug,resource_id,
+        enquired_at + interval '330 minutes' as enquired_at, call_logs.created_at + interval '330 minutes' as created_at,
+                RANK() OVER (PARTITION BY resource_id, resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE resource_type='Rental::Opportunity'
+         and date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '29 days')
+         and date(enquired_at  + interval '330 minutes') < date(now())
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+) main_query 
+order by case when metric='FTD' then '1'
+              when metric='FTD-1' then '2'
+              when metric='FTD-2' then '3'
+              when metric='FTD-3' then '4'
+              when metric='Last 7 Days' then '5'
+              else metric end"
+Lead TAT Analysis - Tasks,"select * 
+from
+(
+select a.*, tasks_less_than_2_hours, tasks_less_than_4_hours, tasks_less_than_8_hours, tasks_less_than_24_hours,
+(total_leads - tasks_less_than_24_hours - tasks_less_than_8_hours - tasks_less_than_4_hours - tasks_less_than_2_hours)
+as tasks_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '1 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '1 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD' as metric, 
+count(slug) filter (where TAT<=120) as tasks_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as tasks_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as tasks_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as tasks_less_than_24_hours,
+count(slug) filter (where TAT>1440) as tasks_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from(created_at::TIMESTAMP - enquired_at::TIMESTAMP))/60) as TAT
+FROM (
+        SELECT rental_opportunities.slug, activities.created_at + interval '330 minutes' as created_at, 
+        enquired_at + interval '330 minutes' as enquired_at,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now()  + interval '330 minutes' - interval '1 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--FTD-1
+union
+
+select a.*, tasks_less_than_2_hours, tasks_less_than_4_hours, tasks_less_than_8_hours, tasks_less_than_24_hours,
+(total_leads - tasks_less_than_24_hours - tasks_less_than_8_hours - tasks_less_than_4_hours - tasks_less_than_2_hours)
+as tasks_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD-1' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '2 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD-1'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '2 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD-1' as metric, 
+count(slug) filter (where TAT<=120) as tasks_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as tasks_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as tasks_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as tasks_less_than_24_hours,
+count(slug) filter (where TAT>1440) as tasks_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from(created_at::TIMESTAMP - enquired_at::TIMESTAMP))/60) as TAT
+FROM (
+        SELECT rental_opportunities.slug, activities.created_at + interval '330 minutes' as created_at, 
+        enquired_at + interval '330 minutes' as enquired_at,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now()  + interval '330 minutes' - interval '2 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--FTD-2
+union
+
+select a.*, tasks_less_than_2_hours, tasks_less_than_4_hours, tasks_less_than_8_hours, tasks_less_than_24_hours,
+(total_leads - tasks_less_than_24_hours - tasks_less_than_8_hours - tasks_less_than_4_hours - tasks_less_than_2_hours)
+as tasks_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD-2' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '3 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD-2'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '3 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD-2' as metric, 
+count(slug) filter (where TAT<=120) as tasks_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as tasks_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as tasks_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as tasks_less_than_24_hours,
+count(slug) filter (where TAT>1440) as tasks_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from(created_at::TIMESTAMP - enquired_at::TIMESTAMP))/60) as TAT
+FROM (
+        SELECT rental_opportunities.slug, activities.created_at + interval '330 minutes' as created_at, 
+        enquired_at + interval '330 minutes' as enquired_at,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now()  + interval '330 minutes' - interval '3 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--FTD-3
+union
+
+select a.*, tasks_less_than_2_hours, tasks_less_than_4_hours, tasks_less_than_8_hours, tasks_less_than_24_hours,
+(total_leads - tasks_less_than_24_hours - tasks_less_than_8_hours - tasks_less_than_4_hours - tasks_less_than_2_hours)
+as tasks_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'FTD-3' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '4 days')
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'FTD-3'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at + interval '330 minutes') = date(now() + interval '5 hours 30 minutes' - interval '4 days')
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'FTD-3' as metric, 
+count(slug) filter (where TAT<=120) as tasks_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as tasks_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as tasks_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as tasks_less_than_24_hours,
+count(slug) filter (where TAT>1440) as tasks_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from(created_at::TIMESTAMP - enquired_at::TIMESTAMP))/60) as TAT
+FROM (
+        SELECT rental_opportunities.slug, activities.created_at + interval '330 minutes' as created_at, 
+        enquired_at + interval '330 minutes' as enquired_at,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and date(rental_opportunities.enquired_at + interval '330 minutes') = date(now()  + interval '330 minutes' - interval '4 days')
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--Last 7 Days
+union
+
+select a.*, tasks_less_than_2_hours, tasks_less_than_4_hours, tasks_less_than_8_hours, tasks_less_than_24_hours,
+(total_leads - tasks_less_than_24_hours - tasks_less_than_8_hours - tasks_less_than_4_hours - tasks_less_than_2_hours)
+as tasks_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'Last 7 Days' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '6 days')
+and date(enquired_at  + interval '330 minutes') < date(now())
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'Last 7 Days'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '6 days')
+     and date(created_at  + interval '330 minutes') < date(now())
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'Last 7 Days' as metric, 
+count(slug) filter (where TAT<=120) as tasks_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as tasks_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as tasks_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as tasks_less_than_24_hours,
+count(slug) filter (where TAT>1440) as tasks_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from(created_at::TIMESTAMP - enquired_at::TIMESTAMP))/60) as TAT
+FROM (
+        SELECT rental_opportunities.slug, activities.created_at + interval '330 minutes' as created_at, 
+        enquired_at + interval '330 minutes' as enquired_at,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '6 days')
+         and date(enquired_at  + interval '330 minutes') < date(now())
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+
+--Last 30 Days
+union
+
+select a.*, tasks_less_than_2_hours, tasks_less_than_4_hours, tasks_less_than_8_hours, tasks_less_than_24_hours,
+(total_leads - tasks_less_than_24_hours - tasks_less_than_8_hours - tasks_less_than_4_hours - tasks_less_than_2_hours)
+as tasks_greater_than_24_hours
+from
+(
+select t1.metric, (t1.leads1 + t2.leads2) as total_leads
+from   
+(
+select 'Last 30 Days' as metric, count(id) as leads1
+from rental_opportunities
+where date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '29 days')
+and date(enquired_at  + interval '330 minutes') < date(now())
+and source!='ho_app'
+) as t1
+left JOIN
+ (
+     select 'Last 30 Days'as metric,count(id) as leads2 
+     from enquiries
+     where vertical='rental' and leadable_id isnull
+     and enquiry_type='enquiry' and is_trash=FALSE
+     and date(created_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '29 days')
+     and date(created_at  + interval '330 minutes') < date(now())
+ ) as t2 on t1.metric=t2.metric
+) a 
+
+left JOIN
+(
+select 'Last 30 Days' as metric, 
+count(slug) filter (where TAT<=120) as tasks_less_than_2_hours,
+count(slug) filter (where TAT>120 and TAT<=240) as tasks_less_than_4_hours,
+count(slug) filter (where TAT>240 and TAT<=480) as tasks_less_than_8_hours,
+count(slug) filter (where TAT>480 and TAT<=1440) as tasks_less_than_24_hours,
+count(slug) filter (where TAT>1440) as tasks_greater_than_24_hours
+from
+(
+SELECT slug, avg(EXTRACT(EPOCH from(created_at::TIMESTAMP - enquired_at::TIMESTAMP))/60) as TAT
+FROM (
+        SELECT rental_opportunities.slug, activities.created_at + interval '330 minutes' as created_at, 
+        enquired_at + interval '330 minutes' as enquired_at,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and date(enquired_at  + interval '330 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '29 days')
+         and date(enquired_at  + interval '330 minutes') < date(now())
+    ) sub_query
+WHERE date_rank=1
+group by slug
+) query
+) b on a.metric=b.metric
+) main_query 
+order by case when metric='FTD' then '1'
+              when metric='FTD-1' then '2'
+              when metric='FTD-2' then '3'
+              when metric='FTD-3' then '4'
+              when metric='Last 7 Days' then '5'
+              else metric end"
+Tasks Spillover,"SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as Spillover_tasks
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+select date(reminders.due_at) as eDate, count(reminders.id) as count from reminders 
+inner join activities on reminders.id= activities.feedable_id
+where activities.feedable_type='Reminder' and activities.leadable_type='Rental::Opportunity'
+and date(reminders.due_at) < date(reminders.done_at)
+and date(reminders.due_at) >= date(now() - interval '7 days')
+group by date(reminders.due_at)) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc"
+Tasks Resolved,"SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as Tasks_resolved
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(select date(tasks.performed_at)as eDate, count(tasks.id) as count
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+and date(tasks.performed_at) >= date (tasks.created_at)
+and date(tasks.performed_at) >= date(now() - interval ' 7 days')
+group by date(tasks.performed_at)) AS countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc"
+TAT,"select query_2.date,cast(query_2.lowertat as int) as lohono,query_1.TAT as wildberry from
+(
+select t1.date,
+    CASE WHEN t1.tat1=0 then cast(round(t2.tat2::double precision) as int)
+    WHEN t1.tat1 < t2.tat2 then cast(round(t1.tat1::double precision) as int)
+    WHEN (t2.tat2=0) then cast(round(t1.tat1::double precision) as int)
+    else cast(round(t2.tat2::double precision) as int)
+    end as TAT
+from
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as tat1
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT date(sub_query.enq) as eDate, avg(sub_query.TAT) as count
+FROM (
+        (SELECT rental_opportunities.enquired_at as enq, avg(EXTRACT(EPOCH from(activities.created_at::TIMESTAMP - rental_opportunities.enquired_at::TIMESTAMP))/60) as TAT,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and rental_opportunities.source='wildberrystays.com'
+         and date(rental_opportunities.enquired_at) >= date(now() - interval '7 days')
+         group by rental_opportunities.enquired_at,activities.created_at,activities.leadable_id,activities.leadable_type
+         )
+    ) sub_query
+WHERE date_rank=1
+group by date(sub_query.enq)) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc
+) as t1
+left JOIN
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as tat2
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT date(sub_query.enq) as eDate, avg(sub_query.TAT) as count
+FROM (
+        (SELECT rental_opportunities.enquired_at as enq, avg(EXTRACT(EPOCH from(now() - rental_opportunities.enquired_at::TIMESTAMP))/60) as TAT
+         FROM rental_opportunities
+         WHERE rental_opportunities.status='no_rating'
+         and rental_opportunities.source='wildberrystays.com'
+         and date(rental_opportunities.enquired_at) >= date(now() - interval '7 days')
+         group by rental_opportunities.enquired_at
+         )
+    ) sub_query
+group by date(sub_query.enq)) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc
+) as t2 on t1.date=t2.date
+
+) query_1
+left JOIN
+(
+select t1.date,
+    CASE WHEN t1.tat1=0 then round(t2.tat2::double precision)
+    WHEN t1.tat1 < t2.tat2 THEN round(t1.tat1::double precision)
+    WHEN (t1.tat1=0 and t2.tat2=0) then round(t3.tat3::double precision)
+    else round(t2.tat2::double precision)
+    end as Lowertat
+from
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as tat1
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(SELECT date(sub_query.enq) as eDate, avg(sub_query.TAT) as count
+FROM (
+        (SELECT rental_opportunities.enquired_at as enq, 
+        avg(EXTRACT(EPOCH from (call_logs.created_at::TIMESTAMP - rental_opportunities.enquired_at::TIMESTAMP))/60) as TAT,
+                RANK() OVER (PARTITION BY resource_id,
+                                          resource_type
+                             ORDER BY call_logs.created_at asc) date_rank
+         FROM call_logs
+         INNER JOIN rental_opportunities ON rental_opportunities.id=call_logs.resource_id
+         WHERE call_direction='Outgoing'
+         and call_logs.resource_type = 'Rental::Opportunity'
+         and rental_opportunities.source != 'wildberrystays.com'
+         and date(rental_opportunities.enquired_at) >= date(now() - interval '7 days')
+         and call_duration >= 20
+         group by rental_opportunities.enquired_at,call_logs.created_at,call_logs.resource_id,call_logs.resource_type
+         )
+    ) sub_query
+WHERE date_rank=1
+group by date(sub_query.enq)) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc
+) as t1
+left JOIN
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as tat2
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT date(sub_query.enq) as eDate, avg(sub_query.TAT) as count
+FROM (
+        (SELECT rental_opportunities.enquired_at as enq, avg(EXTRACT(EPOCH from(activities.created_at::TIMESTAMP - rental_opportunities.enquired_at::TIMESTAMP))/60) as TAT,
+                RANK() OVER (PARTITION BY leadable_id,
+                                          leadable_type
+                             ORDER BY activities.created_at asc) date_rank
+         FROM activities
+         INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+         inner join tasks on tasks.id= activities.feedable_id
+         WHERE activities.leadable_type = 'Rental::Opportunity' and tasks.rating != 'no_rating'
+         and rental_opportunities.source != 'wildberrystays.com'
+         and date(rental_opportunities.enquired_at) >= date(now() - interval '7 days')
+         group by rental_opportunities.enquired_at,activities.created_at,activities.leadable_id,activities.leadable_type
+         )
+    ) sub_query
+WHERE date_rank=1
+group by date(sub_query.enq)) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc
+)as t2 on t1.date=t2.date
+LEFT join
+(
+SELECT -- TO_CHAR(date,'dd Mon') 
+date as date, coalesce(countTable.count,0) as tat3
+FROM
+  (SELECT date (now() - i * interval '1 day') AS date
+   FROM generate_series(0,6) i) AS dateTable
+LEFT JOIN
+(
+SELECT date(sub_query.enq) as eDate, avg(sub_query.TAT) as count
+FROM (
+        (SELECT rental_opportunities.enquired_at as enq, avg(EXTRACT(EPOCH from(now() - rental_opportunities.enquired_at::TIMESTAMP))/60) as TAT
+         FROM rental_opportunities
+         WHERE rental_opportunities.status='no_rating'
+         and rental_opportunities.source != 'wildberrystays.com'
+         and date(rental_opportunities.enquired_at) >= date(now() - interval '7 days')
+         group by rental_opportunities.enquired_at
+         )
+    ) sub_query
+group by date(sub_query.enq)) as countTable
+on dateTable.date = countTable.eDate
+order by dateTable.date desc
+)as t3 on t3.date=t2.date
+order by t1.date asc
+) as query_2 on query_1.date=query_2.date
+order by query_2.date asc"
+Pending Rental Enquiries,"select a.metric,a.count as lohono,b.count as wildberry from
+(
+select metric,count from
+(
+select 'Pending Rental Enquiries' as metric,count(id) as count
+from enquiries
+WHERE vertical='rental'
+and enquiry_type='enquiry'
+AND is_trash=FALSE
+and source!='wildberrystays.com'
+and leadable_id is null
+) query_1
+union
+(
+select 'Trips with No Rating',count(id) as count
+from rental_opportunities
+where status='no_rating'
+and source!='wildberrystays.com'
+and (date_part('month',enquired_at) >=4 and date_part('year',enquired_at) >=2020 or date_part('year',enquired_at)>=2021)
+)
+) a
+inner join
+(
+select metric,count from
+(
+select 'Pending Rental Enquiries' as metric,count(id) as count
+from enquiries
+WHERE vertical='rental'
+and enquiry_type='enquiry'
+AND is_trash=FALSE
+and source='wildberrystays.com'
+and leadable_id is null
+) query_1
+union
+(
+select 'Trips with No Rating',count(id) as count
+from rental_opportunities
+where status='no_rating'
+and source='wildberrystays.com'
+and (date_part('month',enquired_at) >=4 and date_part('year',enquired_at) >=2020 or date_part('year',enquired_at)>=2021)
+)
+) b on a.metric=b.metric"
+Closed Reason: Prospect Stage (WTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,count(tasks.id) as count
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+--and rental_opportunities.source!='wildberrystays.com'
+and DATE_PART('week',tasks.performed_at) = DATE_PART('week',now()) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',now())
+and rental_opportunities.current_stage='prospect'
+group by reason
+order by count desc"
+Closed Reason: Lead Stage (MTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,count(tasks.id) as count
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+--and rental_opportunities.source!='wildberrystays.com'
+and (DATE_PART('month',tasks.performed_at) = DATE_PART('month',now()) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',now()))
+and rental_opportunities.current_stage='lead'
+group by reason
+order by count desc"
+Closed Reason: Lead Stage (WTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,count(tasks.id) as count
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+--and rental_opportunities.source!='wildberrystays.com'
+and DATE_PART('week',tasks.performed_at) = DATE_PART('week',now()) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',now())
+and rental_opportunities.current_stage='lead'
+group by reason
+order by count desc"
+Closed Reason: Prospect Stage (MTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,count(tasks.id) as count
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+--and rental_opportunities.source!='wildberrystays.com'
+and DATE_PART('month',tasks.performed_at) = DATE_PART('month',now()) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',now())
+and rental_opportunities.current_stage='prospect'
+group by reason
+order by count desc"
+Closed Reason with Source: Lead Stage (WTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,
+count(CASE WHEN SOURCE='isprava.com' or SOURCE='website' or SOURCE='lohono.com' THEN 1
+             END) AS website,
+count(CASE WHEN SOURCE='reference' or SOURCE='Reference' or SOURCE='word_of_mouth' or SOURCE='isprava' or SOURCE='lohono' THEN 1
+             END) AS reference,
+count(CASE WHEN SOURCE='agent' or SOURCE='Agent' or SOURCE='ota' THEN 1
+             END) AS agent,
+count(CASE WHEN SOURCE='instagram' or SOURCE='facebook' or SOURCE='other_leadgen' or SOURCE='social_media' or SOURCE='SM' 
+or SOURCE='google' or SOURCE='GS' THEN 1
+             END) AS digital,
+count(CASE WHEN SOURCE='wildberrystays.com' THEN 1
+             END) AS wildberry,             
+count(CASE WHEN SOURCE='Others' or SOURCE='other' or SOURCE='press' or SOURCE='event' or SOURCE='direct_mailer' or SOURCE='Direct Mailer' 
+or SOURCE='emailer' THEN 1
+END) AS others
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+and DATE_PART('week',tasks.performed_at) = DATE_PART('week',(now() - interval '1 days')) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',(now() - interval '1 days'))
+and rental_opportunities.current_stage='lead'
+group by reason
+order by count(tasks.id) desc"
+Closed Reason with Source: Lead Stage (MTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,
+count(CASE WHEN SOURCE='isprava.com' or SOURCE='website' or SOURCE='lohono.com' THEN 1
+             END) AS website,
+count(CASE WHEN SOURCE='reference' or SOURCE='Reference' or SOURCE='word_of_mouth' or SOURCE='isprava' or SOURCE='lohono' THEN 1
+             END) AS reference,
+count(CASE WHEN SOURCE='agent' or SOURCE='Agent' or SOURCE='ota' THEN 1
+             END) AS agent,
+count(CASE WHEN SOURCE='instagram' or SOURCE='facebook' or SOURCE='other_leadgen' or SOURCE='social_media' or SOURCE='SM' 
+or SOURCE='google' or SOURCE='GS' THEN 1
+             END) AS digital,
+count(CASE WHEN SOURCE='wildberrystays.com' THEN 1
+             END) AS wildberry,             
+count(CASE WHEN SOURCE='Others' or SOURCE='other' or SOURCE='press' or SOURCE='event' or SOURCE='direct_mailer' or SOURCE='Direct Mailer' 
+or SOURCE='emailer' THEN 1
+END) AS others
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+and (DATE_PART('month',tasks.performed_at) = DATE_PART('month',now()) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',now()))
+and rental_opportunities.current_stage='lead'
+group by reason
+order by count(tasks.id) desc"
+Closed Reason with Source: Prospect Stage (WTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,
+count(CASE WHEN SOURCE='isprava.com' or SOURCE='website' or SOURCE='lohono.com' THEN 1
+             END) AS website,
+count(CASE WHEN SOURCE='reference' or SOURCE='Reference' or SOURCE='word_of_mouth' or SOURCE='isprava' or SOURCE='lohono' THEN 1
+             END) AS reference,
+count(CASE WHEN SOURCE='agent' or SOURCE='Agent' or SOURCE='ota' THEN 1
+             END) AS agent,
+count(CASE WHEN SOURCE='instagram' or SOURCE='facebook' or SOURCE='other_leadgen' or SOURCE='social_media' or SOURCE='SM' 
+or SOURCE='google' or SOURCE='GS' THEN 1
+             END) AS digital,
+count(CASE WHEN SOURCE='wildberrystays.com' THEN 1
+             END) AS wildberry,             
+count(CASE WHEN SOURCE='Others' or SOURCE='other' or SOURCE='press' or SOURCE='event' or SOURCE='direct_mailer' or SOURCE='Direct Mailer' 
+or SOURCE='emailer' THEN 1
+END) AS others
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+and DATE_PART('week',tasks.performed_at) = DATE_PART('week',(now() - interval '1 days')) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',(now() - interval '1 days'))
+and rental_opportunities.current_stage='prospect'
+group by reason
+order by count(tasks.id) desc"
+Closed Reason with Source: Prospect Stage (MTD),"select (jsonb_array_elements(closed_reason)->>'closed_reason_value') as reason,
+count(CASE WHEN SOURCE='isprava.com' or SOURCE='website' or SOURCE='lohono.com' THEN 1
+             END) AS website,
+count(CASE WHEN SOURCE='reference' or SOURCE='Reference' or SOURCE='word_of_mouth' or SOURCE='isprava' or SOURCE='lohono' THEN 1
+             END) AS reference,
+count(CASE WHEN SOURCE='agent' or SOURCE='Agent' or SOURCE='ota' THEN 1
+             END) AS agent,
+count(CASE WHEN SOURCE='instagram' or SOURCE='facebook' or SOURCE='other_leadgen' or SOURCE='social_media' or SOURCE='SM' 
+or SOURCE='google' or SOURCE='GS' THEN 1
+             END) AS digital,
+count(CASE WHEN SOURCE='wildberrystays.com' THEN 1
+             END) AS wildberry,             
+count(CASE WHEN SOURCE='Others' or SOURCE='other' or SOURCE='press' or SOURCE='event' or SOURCE='direct_mailer' or SOURCE='Direct Mailer' 
+or SOURCE='emailer' THEN 1
+END) AS others
+from tasks
+inner join activities on tasks.id= activities.feedable_id
+inner join rental_opportunities on rental_opportunities.id=activities.leadable_id
+where tasks.rating='closed' and
+activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+and DATE_PART('month',tasks.performed_at) = DATE_PART('month',now()) AND
+DATE_PART('year',tasks.performed_at) = DATE_PART('year',now())
+and rental_opportunities.current_stage='prospect'
+group by reason
+order by count(tasks.id) desc"
+Gateway Bookings (MTD),"SELECT count(distinct(rental_opportunities.slug)) as gateway_bookings
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())"
+Gateway Bookings GMV (MTD),"select cast(sum(gmv) as int) as gateway_gmv
+FROM
+(
+select a.slug,b.gmv
+FROM
+(
+select distinct rental_opportunities.slug
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())
+) a
+
+inner join
+(
+SELECT rental_opportunities.slug,sum((rental_reservations.breakdown->> 'net_base_rate')::float * (rental_reservations.breakdown->> 'currency_factor')::float) as gmv
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())
+group by rental_opportunities.slug
+) b on a.slug=b.slug
+) main_query"
+Gateway Bookings: Time Taken between Trip Creation and Booking Confirmed (MTD),"select round(avg(TAT)::double precision)::integer as average_time
+from
+(
+SELECT (rental_opportunities.slug), avg(EXTRACT(EPOCH from(rental_reservations.confirmed_at::TIMESTAMP - rental_opportunities.created_at::TIMESTAMP))/3600) as TAT
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())
+group by rental_opportunities.slug
+) query"
+Gateway Bookings (YTD),"SELECT count(distinct(rental_opportunities.slug)) as gateway_bookings
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))"
+Gateway Bookings GMV (YTD),"select cast(sum(gmv) as int) as gateway_gmv
+FROM
+(
+select a.slug,b.gmv
+FROM
+(
+select distinct rental_opportunities.slug
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))
+) a
+
+inner join
+(
+SELECT rental_opportunities.slug,sum((rental_reservations.breakdown->> 'net_base_rate')::float * (rental_reservations.breakdown->> 'currency_factor')::float) as gmv
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))
+group by rental_opportunities.slug
+) b on a.slug=b.slug
+) main_query"
+Gateway Bookings: Time Taken between Trip Creation and Booking Confirmed (YTD),"select round(avg(TAT)::double precision)::integer as average_time
+from
+(
+SELECT (rental_opportunities.slug), avg(EXTRACT(EPOCH from(rental_reservations.confirmed_at::TIMESTAMP - rental_opportunities.created_at::TIMESTAMP))/3600) as TAT
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))
+group by rental_opportunities.slug
+) query"
+Non Payment Gateway Bookings (MTD),"SELECT count(distinct(rental_opportunities.slug)) as non_payment_gateway_bookings
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())"
+Non Payment Gateway Bookings GMV (MTD),"select cast(sum(gmv) as int) as non_payment_gateway_gmv
+FROM
+(
+select a.slug,b.gmv
+FROM
+(
+select distinct rental_opportunities.slug
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())
+) a
+
+inner join
+(
+SELECT rental_opportunities.slug,sum((rental_reservations.breakdown->> 'net_base_rate')::float * (rental_reservations.breakdown->> 'currency_factor')::float) as gmv
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())
+group by rental_opportunities.slug
+) b on a.slug=b.slug
+) main_query"
+Non Payment Gateway Bookings: Time taken between Trip Creation and Booking Confirmed (MTD),"select round(avg(TAT)::double precision)::integer as average_time
+from
+(
+SELECT (rental_opportunities.slug), avg(EXTRACT(EPOCH from(rental_reservations.confirmed_at::TIMESTAMP - rental_opportunities.created_at::TIMESTAMP))/3600) as TAT
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
+and date_part('month',confirmed_at) = date_part('month',now())
+and date_part('year',confirmed_at) = date_part('year',now())
+group by rental_opportunities.slug
+) query"
+Call Recording Report,"select call_logs.id, call_transfer_status,call_status, call_direction, call_duration, called_number,(call_time + interval '5 hours 30 minutes') as call_time, date(call_logs.created_at) as created_at, call_transfer_duration, resource_type, original_url,staffs.name as poc
+from call_logs
+left join staffs on staffs.id=call_logs.answered_staff_id
+where called_number = '+918430600600' 
+and date(call_logs.created_at) >= '{{ Start Date}}'
+and date(call_logs.created_at) <= '{{ End Date}}'
+order by call_time desc"
+Calendar (30 Days),"select * from
+(
+select to_char(a.date,'yyyy/mm/dd') as date,sum(a.iv_b) as iv_b,sum(a.evora) as evora,sum(a.magnolia) as magnolia, sum(a.fv_d) as fv_d, sum(a.fv_c) as fv_c,sum(a.iv_d) as iv_d,
+sum(a.verde) as verde,sum(a.alenteho) as Alenteho,sum(a.iv_a) as iv_a, sum(a.verite) as verite,sum(a.beira_mar) as beira_mar,
+sum(a.fv_e) as fv_e,sum(a.fv_a) as fv_a,sum(a.rainbowtree) as rainbowtree, sum(a.loto_bianco) as loto_bianco, sum(a.vivre) as vivre,
+sum(a.fv_f) as fv_f,sum(a.branco) as branco,sum(a.oborr_house) as oborr_house,sum(a.amorzito) as Amorzito, sum(a.nandi_farm) as nandi_farm,
+sum(a.raj_angan) as raj_angan,sum(a.casa_riviere) as casa_riviere,sum(a.fv_h) as fv_h,sum(a.whispering_banyan) as whispering_banyan,sum(a.villa_amber) as villa_amber,
+sum(a.ishavilas) as ishavilas,sum(a.ishavilas_5_bedroom) as ishavilas_5_bedroom,sum(a.greystone_manor) as greystone_manor,sum(a.villa_shashwat) as villa_shashwat,
+sum(a.villa_alborz) as villa_alborz, sum(a.villa_azul) as villa_azul, sum(a.mv_c) as mv_c, sum(a.mv_d) as mv_d, sum(a.mv_f) as mv_f,
+sum(a.mv_i) as mv_i, sum(a.glass_house_91) as glass_house_91, sum(a.villa_nimaya) as villa_nimaya
+from
+(
+select rental_property_calendars.date as date,
+case when (rental_properties.id=1 and rental_property_calendars.status='available') then 1 else 0 end as iv_b,
+case when (rental_properties.id=2 and rental_property_calendars.status='available') then 1 else 0 end as evora,
+case when (rental_properties.id=4 and rental_property_calendars.status='available') then 1 else 0 end as magnolia,
+case when (rental_properties.id=5 and rental_property_calendars.status='available') then 1 else 0 end as fv_d,
+case when (rental_properties.id=6 and rental_property_calendars.status='available') then 1 else 0 end as fv_c,
+case when (rental_properties.id=7 and rental_property_calendars.status='available') then 1 else 0 end as iv_d,
+case when (rental_properties.id=8 and rental_property_calendars.status='available') then 1 else 0 end as verde,
+case when (rental_properties.id=9 and rental_property_calendars.status='available') then 1 else 0 end as alenteho,
+case when (rental_properties.id=11 and rental_property_calendars.status='available') then 1 else 0 end as iv_a,
+case when (rental_properties.id=15 and rental_property_calendars.status='available') then 1 else 0 end as verite,
+case when (rental_properties.id=16 and rental_property_calendars.status='available') then 1 else 0 end as beira_mar,
+case when (rental_properties.id=17 and rental_property_calendars.status='available') then 1 else 0 end as fv_e,
+case when (rental_properties.id=18 and rental_property_calendars.status='available') then 1 else 0 end as fv_a,
+case when (rental_properties.id=19 and rental_property_calendars.status='available') then 1 else 0 end as rainbowtree,
+case when (rental_properties.id=20 and rental_property_calendars.status='available') then 1 else 0 end as loto_bianco,
+case when (rental_properties.id=21 and rental_property_calendars.status='available') then 1 else 0 end as vivre,
+case when (rental_properties.id=22 and rental_property_calendars.status='available') then 1 else 0 end as fv_f,
+case when (rental_properties.id=23 and rental_property_calendars.status='available') then 1 else 0 end as branco,
+case when (rental_properties.id=46 and rental_property_calendars.status='available') then 1 else 0 end as oborr_house,
+case when (rental_properties.id=47 and rental_property_calendars.status='available') then 1 else 0 end as amorzito,
+case when (rental_properties.id=48 and rental_property_calendars.status='available') then 1 else 0 end as nandi_farm,
+case when (rental_properties.id=49 and rental_property_calendars.status='available') then 1 else 0 end as raj_angan,
+case when (rental_properties.id=50 and rental_property_calendars.status='available') then 1 else 0 end as casa_riviere,
+case when (rental_properties.id=51 and rental_property_calendars.status='available') then 1 else 0 end as fv_h,
+case when (rental_properties.id=52 and rental_property_calendars.status='available') then 1 else 0 end as whispering_banyan,
+case when (rental_properties.id=53 and rental_property_calendars.status='available') then 1 else 0 end as villa_amber,
+case when (rental_properties.id=55 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas,
+case when (rental_properties.id=56 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas_5_bedroom,
+case when (rental_properties.id=57 and rental_property_calendars.status='available') then 1 else 0 end as greystone_manor,
+case when (rental_properties.id=58 and rental_property_calendars.status='available') then 1 else 0 end as villa_shashwat,
+case when (rental_properties.id=59 and rental_property_calendars.status='available') then 1 else 0 end as villa_alborz,
+case when (rental_properties.id=60 and rental_property_calendars.status='available') then 1 else 0 end as villa_azul,
+case when (rental_properties.id=63 and rental_property_calendars.status='available') then 1 else 0 end as mv_c,
+case when (rental_properties.id=64 and rental_property_calendars.status='available') then 1 else 0 end as mv_d,
+case when (rental_properties.id=66 and rental_property_calendars.status='available') then 1 else 0 end as mv_f,
+case when (rental_properties.id=74 and rental_property_calendars.status='available') then 1 else 0 end as mv_i,
+case when (rental_properties.id=76 and rental_property_calendars.status='available') then 1 else 0 end as glass_house_91,
+case when (rental_properties.id=77 and rental_property_calendars.status='available') then 1 else 0 end as villa_nimaya
+from rental_property_calendars inner join rental_properties on rental_property_calendars.rental_property_id = rental_properties.id
+where date(rental_property_calendars.date) >= date(now())
+group by rental_property_calendars.date,rental_properties.id,rental_property_calendars.status
+order by rental_property_calendars.date asc
+) a
+group by a.date
+order by a.date asc
+limit 30
+) as query_1
+union
+(
+select 'Total' as date,cast(sum(b.iv_b) as int) as iv_b,sum(b.evora) as evora,sum(b.magnolia) as magnolia, sum(b.fv_d) as fv_d, sum(b.fv_c) as fv_c,sum(b.iv_d) as iv_d,
+sum(b.verde) as verde,sum(b.alenteho) as Alenteho,sum(b.iv_a) as iv_a, sum(b.verite) as verite,sum(b.beira_mar) as beira_mar,
+sum(b.fv_e) as fv_e,sum(b.fv_a) as fv_a,sum(b.rainbowtree) as rainbowtree, sum(b.loto_bianco) as loto_bianco, sum(b.vivre) as vivre,
+sum(b.fv_f) as fv_f,sum(b.branco) as branco,sum(b.oborr_house) as oborr_house,sum(b.amorzito) as Amorzito, sum(b.nandi_farm) as nandi_farm,
+sum(b.raj_angan) as raj_angan,sum(b.casa_riviere) as casa_riviere,sum(b.fv_h) as fv_h,sum(b.whispering_banyan) as whispering_banyan,sum(b.villa_amber) as villa_amber,
+sum(b.ishavilas) as ishavilas,sum(b.ishavilas_5_bedroom) as ishavilas_5_bedroom,sum(b.greystone_manor) as greystone_manor,sum(b.villa_shashwat) as villa_shashwat,
+sum(b.villa_alborz) as villa_alborz, sum(b.villa_azul) as villa_azul, sum(b.mv_c) as mv_c, sum(b.mv_d) as mv_d, sum(b.mv_f) as mv_f,
+sum(b.mv_i) as mv_i, sum(b.glass_house_91) as glass_house_91, sum(b.villa_nimaya) as villa_nimaya
+from
+(
+select a.date,sum(a.iv_b) as iv_b,cast(sum(a.evora) as int) as evora, cast(sum(a.magnolia) as int) as magnolia, cast(sum(a.fv_d) as int) as fv_d, cast(sum(a.fv_c) as int) as fv_c,
+cast(sum(a.iv_d) as int) as iv_d, cast(sum(a.verde) as int) as verde,cast(sum(a.alenteho) as int) as Alenteho, cast(sum(a.iv_a) as int) as iv_a, cast(sum(a.verite) as int) as verite,
+cast(sum(a.beira_mar) as int) as beira_mar, cast(sum(a.fv_e) as int) as fv_e,cast (sum(a.fv_a) as int) as fv_a, cast(sum(a.rainbowtree) as int) as rainbowtree, 
+cast(sum(a.loto_bianco) as int) as loto_bianco,cast(sum(a.vivre) as int) as vivre, cast(sum(a.fv_f) as int) as fv_f,
+cast(sum(a.branco) as int) as branco,cast(sum(a.oborr_house) as int) as oborr_house,cast(sum(a.amorzito) as int) as Amorzito, cast(sum(a.nandi_farm) as int) as nandi_farm,
+cast(sum(a.raj_angan) as int) as raj_angan,cast(sum(a.casa_riviere) as int) as casa_riviere,cast(sum(a.fv_h) as int) as fv_h,cast(sum(a.whispering_banyan) as int) as whispering_banyan,
+cast(sum(a.villa_amber) as int) as villa_amber,cast(sum(a.ishavilas) as int) as ishavilas,cast(sum(a.ishavilas_5_bedroom) as int) as ishavilas_5_bedroom,
+cast(sum(a.greystone_manor) as int) as greystone_manor,cast(sum(a.villa_shashwat) as int) as villa_shashwat,cast(sum(a.villa_alborz) as int) as villa_alborz,
+cast(sum(a.villa_azul) as int) as villa_azul, cast(sum(a.mv_c) as int) as mv_c, cast(sum(a.mv_d) as int) as mv_d, cast(sum(a.mv_f) as int) as mv_f,
+cast(sum(a.mv_i) as int) as mv_i, cast(sum(a.glass_house_91) as int) as glass_house_91, cast(sum(a.villa_nimaya) as int) as villa_nimaya
+from
+(
+select rental_property_calendars.date as date,
+case when (rental_properties.id=1 and rental_property_calendars.status='available') then 1 else 0 end as iv_b,
+case when (rental_properties.id=2 and rental_property_calendars.status='available') then 1 else 0 end as evora,
+case when (rental_properties.id=4 and rental_property_calendars.status='available') then 1 else 0 end as magnolia,
+case when (rental_properties.id=5 and rental_property_calendars.status='available') then 1 else 0 end as fv_d,
+case when (rental_properties.id=6 and rental_property_calendars.status='available') then 1 else 0 end as fv_c,
+case when (rental_properties.id=7 and rental_property_calendars.status='available') then 1 else 0 end as iv_d,
+case when (rental_properties.id=8 and rental_property_calendars.status='available') then 1 else 0 end as verde,
+case when (rental_properties.id=9 and rental_property_calendars.status='available') then 1 else 0 end as alenteho,
+case when (rental_properties.id=11 and rental_property_calendars.status='available') then 1 else 0 end as iv_a,
+case when (rental_properties.id=15 and rental_property_calendars.status='available') then 1 else 0 end as verite,
+case when (rental_properties.id=16 and rental_property_calendars.status='available') then 1 else 0 end as beira_mar,
+case when (rental_properties.id=17 and rental_property_calendars.status='available') then 1 else 0 end as fv_e,
+case when (rental_properties.id=18 and rental_property_calendars.status='available') then 1 else 0 end as fv_a,
+case when (rental_properties.id=19 and rental_property_calendars.status='available') then 1 else 0 end as rainbowtree,
+case when (rental_properties.id=20 and rental_property_calendars.status='available') then 1 else 0 end as loto_bianco,
+case when (rental_properties.id=21 and rental_property_calendars.status='available') then 1 else 0 end as vivre,
+case when (rental_properties.id=22 and rental_property_calendars.status='available') then 1 else 0 end as fv_f,
+case when (rental_properties.id=23 and rental_property_calendars.status='available') then 1 else 0 end as branco,
+case when (rental_properties.id=46 and rental_property_calendars.status='available') then 1 else 0 end as oborr_house,
+case when (rental_properties.id=47 and rental_property_calendars.status='available') then 1 else 0 end as amorzito,
+case when (rental_properties.id=48 and rental_property_calendars.status='available') then 1 else 0 end as nandi_farm,
+case when (rental_properties.id=49 and rental_property_calendars.status='available') then 1 else 0 end as raj_angan,
+case when (rental_properties.id=50 and rental_property_calendars.status='available') then 1 else 0 end as casa_riviere,
+case when (rental_properties.id=51 and rental_property_calendars.status='available') then 1 else 0 end as fv_h,
+case when (rental_properties.id=52 and rental_property_calendars.status='available') then 1 else 0 end as whispering_banyan,
+case when (rental_properties.id=53 and rental_property_calendars.status='available') then 1 else 0 end as villa_amber,
+case when (rental_properties.id=55 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas,
+case when (rental_properties.id=56 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas_5_bedroom,
+case when (rental_properties.id=57 and rental_property_calendars.status='available') then 1 else 0 end as greystone_manor,
+case when (rental_properties.id=58 and rental_property_calendars.status='available') then 1 else 0 end as villa_shashwat,
+case when (rental_properties.id=59 and rental_property_calendars.status='available') then 1 else 0 end as villa_alborz,
+case when (rental_properties.id=60 and rental_property_calendars.status='available') then 1 else 0 end as villa_azul,
+case when (rental_properties.id=63 and rental_property_calendars.status='available') then 1 else 0 end as mv_c,
+case when (rental_properties.id=64 and rental_property_calendars.status='available') then 1 else 0 end as mv_d,
+case when (rental_properties.id=66 and rental_property_calendars.status='available') then 1 else 0 end as mv_f,
+case when (rental_properties.id=74 and rental_property_calendars.status='available') then 1 else 0 end as mv_i,
+case when (rental_properties.id=76 and rental_property_calendars.status='available') then 1 else 0 end as glass_house_91,
+case when (rental_properties.id=77 and rental_property_calendars.status='available') then 1 else 0 end as villa_nimaya
+from rental_property_calendars inner join rental_properties on rental_property_calendars.rental_property_id = rental_properties.id
+where date(rental_property_calendars.date) >= date(now())
+group by rental_property_calendars.date,rental_properties.id,rental_property_calendars.status
+order by rental_property_calendars.date asc
+) a
+group by a.date
+order by a.date asc
+limit 30
+)b
+)
+order by date asc"
+Calendar (90 Days),"select * from
+(
+select to_char(a.date,'yyyy/mm/dd') as date,sum(a.iv_b) as iv_b,sum(a.evora) as evora,sum(a.magnolia) as magnolia, sum(a.fv_d) as fv_d, sum(a.fv_c) as fv_c,sum(a.iv_d) as iv_d,
+sum(a.verde) as verde,sum(a.alenteho) as Alenteho,sum(a.iv_a) as iv_a, sum(a.verite) as verite,sum(a.beira_mar) as beira_mar,
+sum(a.fv_e) as fv_e,sum(a.fv_a) as fv_a,sum(a.rainbowtree) as rainbowtree, sum(a.loto_bianco) as loto_bianco, sum(a.vivre) as vivre,
+sum(a.fv_f) as fv_f,sum(a.branco) as branco,sum(a.oborr_house) as oborr_house,sum(a.amorzito) as Amorzito, sum(a.nandi_farm) as nandi_farm,
+sum(a.raj_angan) as raj_angan,sum(a.casa_riviere) as casa_riviere,sum(a.fv_h) as fv_h,sum(a.whispering_banyan) as whispering_banyan,sum(a.villa_amber) as villa_amber,
+sum(a.ishavilas) as ishavilas,sum(a.ishavilas_5_bedroom) as ishavilas_5_bedroom,sum(a.greystone_manor) as greystone_manor,sum(a.villa_shashwat) as villa_shashwat,
+sum(a.villa_alborz) as villa_alborz, sum(a.villa_azul) as villa_azul, sum(a.mv_c) as mv_c, sum(a.mv_d) as mv_d, sum(a.mv_f) as mv_f,
+sum(a.mv_i) as mv_i, sum(a.glass_house_91) as glass_house_91, sum(a.villa_nimaya) as villa_nimaya
+from
+(
+select rental_property_calendars.date as date,
+case when (rental_properties.id=1 and rental_property_calendars.status='available') then 1 else 0 end as iv_b,
+case when (rental_properties.id=2 and rental_property_calendars.status='available') then 1 else 0 end as evora,
+case when (rental_properties.id=4 and rental_property_calendars.status='available') then 1 else 0 end as magnolia,
+case when (rental_properties.id=5 and rental_property_calendars.status='available') then 1 else 0 end as fv_d,
+case when (rental_properties.id=6 and rental_property_calendars.status='available') then 1 else 0 end as fv_c,
+case when (rental_properties.id=7 and rental_property_calendars.status='available') then 1 else 0 end as iv_d,
+case when (rental_properties.id=8 and rental_property_calendars.status='available') then 1 else 0 end as verde,
+case when (rental_properties.id=9 and rental_property_calendars.status='available') then 1 else 0 end as alenteho,
+case when (rental_properties.id=11 and rental_property_calendars.status='available') then 1 else 0 end as iv_a,
+case when (rental_properties.id=15 and rental_property_calendars.status='available') then 1 else 0 end as verite,
+case when (rental_properties.id=16 and rental_property_calendars.status='available') then 1 else 0 end as beira_mar,
+case when (rental_properties.id=17 and rental_property_calendars.status='available') then 1 else 0 end as fv_e,
+case when (rental_properties.id=18 and rental_property_calendars.status='available') then 1 else 0 end as fv_a,
+case when (rental_properties.id=19 and rental_property_calendars.status='available') then 1 else 0 end as rainbowtree,
+case when (rental_properties.id=20 and rental_property_calendars.status='available') then 1 else 0 end as loto_bianco,
+case when (rental_properties.id=21 and rental_property_calendars.status='available') then 1 else 0 end as vivre,
+case when (rental_properties.id=22 and rental_property_calendars.status='available') then 1 else 0 end as fv_f,
+case when (rental_properties.id=23 and rental_property_calendars.status='available') then 1 else 0 end as branco,
+case when (rental_properties.id=46 and rental_property_calendars.status='available') then 1 else 0 end as oborr_house,
+case when (rental_properties.id=47 and rental_property_calendars.status='available') then 1 else 0 end as amorzito,
+case when (rental_properties.id=48 and rental_property_calendars.status='available') then 1 else 0 end as nandi_farm,
+case when (rental_properties.id=49 and rental_property_calendars.status='available') then 1 else 0 end as raj_angan,
+case when (rental_properties.id=50 and rental_property_calendars.status='available') then 1 else 0 end as casa_riviere,
+case when (rental_properties.id=51 and rental_property_calendars.status='available') then 1 else 0 end as fv_h,
+case when (rental_properties.id=52 and rental_property_calendars.status='available') then 1 else 0 end as whispering_banyan,
+case when (rental_properties.id=53 and rental_property_calendars.status='available') then 1 else 0 end as villa_amber,
+case when (rental_properties.id=55 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas,
+case when (rental_properties.id=56 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas_5_bedroom,
+case when (rental_properties.id=57 and rental_property_calendars.status='available') then 1 else 0 end as greystone_manor,
+case when (rental_properties.id=58 and rental_property_calendars.status='available') then 1 else 0 end as villa_shashwat,
+case when (rental_properties.id=59 and rental_property_calendars.status='available') then 1 else 0 end as villa_alborz,
+case when (rental_properties.id=60 and rental_property_calendars.status='available') then 1 else 0 end as villa_azul,
+case when (rental_properties.id=63 and rental_property_calendars.status='available') then 1 else 0 end as mv_c,
+case when (rental_properties.id=64 and rental_property_calendars.status='available') then 1 else 0 end as mv_d,
+case when (rental_properties.id=66 and rental_property_calendars.status='available') then 1 else 0 end as mv_f,
+case when (rental_properties.id=74 and rental_property_calendars.status='available') then 1 else 0 end as mv_i,
+case when (rental_properties.id=76 and rental_property_calendars.status='available') then 1 else 0 end as glass_house_91,
+case when (rental_properties.id=77 and rental_property_calendars.status='available') then 1 else 0 end as villa_nimaya
+from rental_property_calendars inner join rental_properties on rental_property_calendars.rental_property_id = rental_properties.id
+where date(rental_property_calendars.date) >= date(now())
+group by rental_property_calendars.date,rental_properties.id,rental_property_calendars.status
+order by rental_property_calendars.date asc
+) a
+group by a.date
+order by a.date asc
+limit 90
+) as query_1
+union
+(
+select 'Total' as date,cast(sum(b.iv_b) as int) as iv_b,sum(b.evora) as evora,sum(b.magnolia) as magnolia, sum(b.fv_d) as fv_d, sum(b.fv_c) as fv_c,sum(b.iv_d) as iv_d,
+sum(b.verde) as verde,sum(b.alenteho) as Alenteho,sum(b.iv_a) as iv_a, sum(b.verite) as verite,sum(b.beira_mar) as beira_mar,
+sum(b.fv_e) as fv_e,sum(b.fv_a) as fv_a,sum(b.rainbowtree) as rainbowtree, sum(b.loto_bianco) as loto_bianco, sum(b.vivre) as vivre,
+sum(b.fv_f) as fv_f,sum(b.branco) as branco,sum(b.oborr_house) as oborr_house,sum(b.amorzito) as Amorzito, sum(b.nandi_farm) as nandi_farm,
+sum(b.raj_angan) as raj_angan,sum(b.casa_riviere) as casa_riviere,sum(b.fv_h) as fv_h,sum(b.whispering_banyan) as whispering_banyan,sum(b.villa_amber) as villa_amber,
+sum(b.ishavilas) as ishavilas,sum(b.ishavilas_5_bedroom) as ishavilas_5_bedroom,sum(b.greystone_manor) as greystone_manor,sum(b.villa_shashwat) as villa_shashwat,
+sum(b.villa_alborz) as villa_alborz, sum(b.villa_azul) as villa_azul, sum(b.mv_c) as mv_c, sum(b.mv_d) as mv_d, sum(b.mv_f) as mv_f,
+sum(b.mv_i) as mv_i, sum(b.glass_house_91) as glass_house_91, sum(b.villa_nimaya) as villa_nimaya
+from
+(
+select a.date,sum(a.iv_b) as iv_b,cast(sum(a.evora) as int) as evora, cast(sum(a.magnolia) as int) as magnolia, cast(sum(a.fv_d) as int) as fv_d, cast(sum(a.fv_c) as int) as fv_c,
+cast(sum(a.iv_d) as int) as iv_d, cast(sum(a.verde) as int) as verde,cast(sum(a.alenteho) as int) as Alenteho, cast(sum(a.iv_a) as int) as iv_a, cast(sum(a.verite) as int) as verite,
+cast(sum(a.beira_mar) as int) as beira_mar, cast(sum(a.fv_e) as int) as fv_e,cast (sum(a.fv_a) as int) as fv_a, cast(sum(a.rainbowtree) as int) as rainbowtree, 
+cast(sum(a.loto_bianco) as int) as loto_bianco,cast(sum(a.vivre) as int) as vivre, cast(sum(a.fv_f) as int) as fv_f,
+cast(sum(a.branco) as int) as branco,cast(sum(a.oborr_house) as int) as oborr_house,cast(sum(a.amorzito) as int) as Amorzito, cast(sum(a.nandi_farm) as int) as nandi_farm,
+cast(sum(a.raj_angan) as int) as raj_angan,cast(sum(a.casa_riviere) as int) as casa_riviere,cast(sum(a.fv_h) as int) as fv_h,cast(sum(a.whispering_banyan) as int) as whispering_banyan,
+cast(sum(a.villa_amber) as int) as villa_amber,cast(sum(a.ishavilas) as int) as ishavilas,cast(sum(a.ishavilas_5_bedroom) as int) as ishavilas_5_bedroom,
+cast(sum(a.greystone_manor) as int) as greystone_manor,cast(sum(a.villa_shashwat) as int) as villa_shashwat,cast(sum(a.villa_alborz) as int) as villa_alborz,
+cast(sum(a.villa_azul) as int) as villa_azul, cast(sum(a.mv_c) as int) as mv_c, cast(sum(a.mv_d) as int) as mv_d, cast(sum(a.mv_f) as int) as mv_f,
+cast(sum(a.mv_i) as int) as mv_i, cast(sum(a.glass_house_91) as int) as glass_house_91, cast(sum(a.villa_nimaya) as int) as villa_nimaya
+from
+(
+select rental_property_calendars.date as date,
+case when (rental_properties.id=1 and rental_property_calendars.status='available') then 1 else 0 end as iv_b,
+case when (rental_properties.id=2 and rental_property_calendars.status='available') then 1 else 0 end as evora,
+case when (rental_properties.id=4 and rental_property_calendars.status='available') then 1 else 0 end as magnolia,
+case when (rental_properties.id=5 and rental_property_calendars.status='available') then 1 else 0 end as fv_d,
+case when (rental_properties.id=6 and rental_property_calendars.status='available') then 1 else 0 end as fv_c,
+case when (rental_properties.id=7 and rental_property_calendars.status='available') then 1 else 0 end as iv_d,
+case when (rental_properties.id=8 and rental_property_calendars.status='available') then 1 else 0 end as verde,
+case when (rental_properties.id=9 and rental_property_calendars.status='available') then 1 else 0 end as alenteho,
+case when (rental_properties.id=11 and rental_property_calendars.status='available') then 1 else 0 end as iv_a,
+case when (rental_properties.id=15 and rental_property_calendars.status='available') then 1 else 0 end as verite,
+case when (rental_properties.id=16 and rental_property_calendars.status='available') then 1 else 0 end as beira_mar,
+case when (rental_properties.id=17 and rental_property_calendars.status='available') then 1 else 0 end as fv_e,
+case when (rental_properties.id=18 and rental_property_calendars.status='available') then 1 else 0 end as fv_a,
+case when (rental_properties.id=19 and rental_property_calendars.status='available') then 1 else 0 end as rainbowtree,
+case when (rental_properties.id=20 and rental_property_calendars.status='available') then 1 else 0 end as loto_bianco,
+case when (rental_properties.id=21 and rental_property_calendars.status='available') then 1 else 0 end as vivre,
+case when (rental_properties.id=22 and rental_property_calendars.status='available') then 1 else 0 end as fv_f,
+case when (rental_properties.id=23 and rental_property_calendars.status='available') then 1 else 0 end as branco,
+case when (rental_properties.id=46 and rental_property_calendars.status='available') then 1 else 0 end as oborr_house,
+case when (rental_properties.id=47 and rental_property_calendars.status='available') then 1 else 0 end as amorzito,
+case when (rental_properties.id=48 and rental_property_calendars.status='available') then 1 else 0 end as nandi_farm,
+case when (rental_properties.id=49 and rental_property_calendars.status='available') then 1 else 0 end as raj_angan,
+case when (rental_properties.id=50 and rental_property_calendars.status='available') then 1 else 0 end as casa_riviere,
+case when (rental_properties.id=51 and rental_property_calendars.status='available') then 1 else 0 end as fv_h,
+case when (rental_properties.id=52 and rental_property_calendars.status='available') then 1 else 0 end as whispering_banyan,
+case when (rental_properties.id=53 and rental_property_calendars.status='available') then 1 else 0 end as villa_amber,
+case when (rental_properties.id=55 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas,
+case when (rental_properties.id=56 and rental_property_calendars.status='available') then 1 else 0 end as ishavilas_5_bedroom,
+case when (rental_properties.id=57 and rental_property_calendars.status='available') then 1 else 0 end as greystone_manor,
+case when (rental_properties.id=58 and rental_property_calendars.status='available') then 1 else 0 end as villa_shashwat,
+case when (rental_properties.id=59 and rental_property_calendars.status='available') then 1 else 0 end as villa_alborz,
+case when (rental_properties.id=60 and rental_property_calendars.status='available') then 1 else 0 end as villa_azul,
+case when (rental_properties.id=63 and rental_property_calendars.status='available') then 1 else 0 end as mv_c,
+case when (rental_properties.id=64 and rental_property_calendars.status='available') then 1 else 0 end as mv_d,
+case when (rental_properties.id=66 and rental_property_calendars.status='available') then 1 else 0 end as mv_f,
+case when (rental_properties.id=74 and rental_property_calendars.status='available') then 1 else 0 end as mv_i,
+case when (rental_properties.id=76 and rental_property_calendars.status='available') then 1 else 0 end as glass_house_91,
+case when (rental_properties.id=77 and rental_property_calendars.status='available') then 1 else 0 end as villa_nimaya
+from rental_property_calendars inner join rental_properties on rental_property_calendars.rental_property_id = rental_properties.id
+where date(rental_property_calendars.date) >= date(now())
+group by rental_property_calendars.date,rental_properties.id,rental_property_calendars.status
+order by rental_property_calendars.date asc
+) a
+group by a.date
+order by a.date asc
+limit 90
+)b
+)
+order by date asc"
+Pending Rental Enquiries,"select
+date(created_at + interval '5 hours 30 minutes') as enquired_at,
+Concat(extract(hour FROM (enquiries.created_at + interval '330 minutes')),'-', extract(hour FROM (enquiries.created_at + interval '390 minutes'))) AS ""Time Slot"",
+concat('https://oi.lohono.com/enquiries/',enquiries.slug) as slug, 
+name, 
+source,
+location
+from enquiries
+WHERE vertical='rental'
+and enquiry_type='enquiry'
+AND is_trash=FALSE
+and leadable_id is null
+and date(created_at + interval '5 hours 30 minutes') >= date(now() + interval '5 hours 30 minutes' - interval '30 days')
+order by created_at desc;"
+Cancellations Report,"select rental_opportunities.slug,rental_opportunities.name, rental_properties.name as villa, date(cancelled_at) as cancelled_at, 
+date(confirmed_at) as confirmed_at,
+sum((breakdown ->> 'net_base_rate')::float * (breakdown ->>'currency_factor')::float) as cancelled_amount
+from rental_reservations
+inner join rental_opportunities on rental_opportunities.id=rental_reservations.rental_opportunity_id
+inner join rental_properties on rental_properties.id=rental_reservations.rental_property_id
+where rental_opportunities.status!='owner_blocked' and rental_opportunities.source!='ho_app'
+and rental_opportunities.source!='wildberrystays.com'
+and rental_reservations.status in ('cancelled')
+and rental_opportunities.slug!='r-cal-b2e2fc28'
+and confirmed_at is not null
+and rental_opportunities.slug not in
+(
+SELECT slug
+FROM
+  (SELECT DATE(tasks.performed_at + interval '5 hours 30 minutes') as resolved_at_date_ist,
+          rank() over(PARTITION BY activities.leadable_id
+                      ORDER BY tasks.performed_at) AS ranking,rental_opportunities.slug,
+          tasks.rating AS rating,
+          breakdown
+   FROM tasks
+   inner join activities on tasks.id= activities.feedable_id
+   INNER JOIN rental_opportunities ON rental_opportunities.id=activities.leadable_id
+   INNER join rental_reservations on rental_reservations.rental_opportunity_id = rental_opportunities.id
+   where activities.feedable_type='Task' and activities.leadable_type='Rental::Opportunity'
+   AND (tasks.rating = 'maal_laao' or tasks.rating='partial_payment')
+   and rental_opportunities.source!='wildberrystays.com'
+   and (rental_reservations.status in ('booked','force_booked'))
+ ) x
+WHERE ranking = 1
+)
+and ((breakdown ->> 'net_base_rate')::float * (breakdown ->>'currency_factor')::float) is not null
+and date(cancelled_at) >= '{{Start Date}}' and date(cancelled_at) <= '{{End Date}}'
+group by date(cancelled_at),rental_opportunities.slug,rental_opportunities.name, date(confirmed_at), rental_properties.name
+order by date(cancelled_at) desc"
+Rental Credits Report,"select rental_opportunities.slug,rental_opportunities.name,date(rental_refunds.created_at) as date,sum(amount_credited) as amount_credited
+from rental_refunds
+inner join rental_reservations on rental_reservations.id=rental_refunds.reservation_id
+inner join rental_opportunities on rental_opportunities.id=rental_reservations.rental_opportunity_id
+where date(rental_refunds.created_at) >= '{{Start Date}}'
+and date(rental_refunds.created_at) <= '{{End Date}}'
+group by date(rental_refunds.created_at), rental_opportunities.name, rental_opportunities.slug
+order by date(rental_refunds.created_at) asc"

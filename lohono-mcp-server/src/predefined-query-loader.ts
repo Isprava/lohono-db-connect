@@ -31,6 +31,7 @@ const DATABASE_DIR = resolveDatabaseDir();
 const CSV_PATHS = [
   path.join(DATABASE_DIR, "schema", "QueriesSheet1.csv"),
   path.join(DATABASE_DIR, "schema", "QueriesSheet2.csv"),
+  path.join(DATABASE_DIR, "schema", "QueriesSheet3.csv"),
 ];
 
 // ── In-memory cache ────────────────────────────────────────────────────────
