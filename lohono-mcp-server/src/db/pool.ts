@@ -2,7 +2,12 @@ import pg from "pg";
 import { logger } from "../../../shared/observability/src/logger.js";
 import { CircuitBreaker } from "../../../shared/circuit-breaker/src/index.js";
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+// Fix DATE parsing: return as "YYYY-MM-DD" strings instead of JS Date objects.
+// Without this, pg creates Date at midnight local time (IST), which when
+// serialized to JSON becomes the previous day in UTC (e.g. June 24 → June 23).
+types.setTypeParser(1082, (val: string) => val); // 1082 = DATE OID
 
 // ── Database pool ──────────────────────────────────────────────────────────
 

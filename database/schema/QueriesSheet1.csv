@@ -3261,7 +3261,7 @@ SELECT
   ly_12w_avg AS last_year_12w_avg
 FROM metrics
 ORDER BY sort_order;"
-Score Card MTD - Isprava,"select 
+Scorecard MTD - Isprava,"select
     a.metric, 
     leads + coalesce(leads2,0) as leads,
     coalesce(prospects,0) as Prospects,
@@ -5018,7 +5018,7 @@ and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('d
 AND maal_laao_at IS NULL
 AND status != 'closed'
 ORDER BY ageing DESC"
-Open Accounts - Chapter,"SELECT 
+Open Accounts - Chapter,"SELECT
     slug,
     name,
     current_stage,
