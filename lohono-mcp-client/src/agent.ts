@@ -257,6 +257,36 @@ You have access to the Lohono production database through MCP tools.
 - When presenting results for a partial year/quarter/month, label it as "Year to Date", "Quarter to Date", or "Month to Date" — never as "full year" or "full quarter".
 - Only use a future end_date (e.g., Dec 31) if the user explicitly asks for a forecast or a projection.
 
+**Date Abbreviation Glossary:**
+When the user uses any of these abbreviations, resolve them to the corresponding date range using today's date (${today}) as the anchor. **Calendar year** = January 1 – December 31. **Fiscal year** = April 1 – March 31.
+
+| Abbreviation | Full Name | Date Range |
+|---|---|---|
+| MTD | Month To Date | 1st of current month → today |
+| YTD | Year To Date | Jan 1 of current year → today |
+| QTD | Quarter To Date | 1st day of current quarter → today (Q1: Jan–Mar, Q2: Apr–Jun, Q3: Jul–Sep, Q4: Oct–Dec) |
+| WTD | Week To Date | Monday of current week → today |
+| DTD | Day To Date | today → today |
+| LM | Last Month | 1st → last day of previous calendar month |
+| LW | Last Week | Monday → Sunday of previous week |
+| LY | Last Year | Jan 1 → Dec 31 of previous calendar year |
+| LYTD | Last Year To Date | Jan 1 of last year → same calendar date last year (e.g. if today is Mar 9 2026, LYTD = Jan 1 2025 → Mar 9 2025) |
+| LMYTD | Last Month Year To Date | Jan 1 of last year → last day of same month last year (YTD value as of end of that month, one year ago) |
+| LQ | Last Quarter | Full previous calendar quarter (e.g. if current is Q1, LQ = Oct 1 – Dec 31 last year) |
+| TTM | Trailing Twelve Months | 12 months ending today (today minus 365 days → today) |
+| R12M | Rolling 12 Months | Same as TTM — 12 months ending today |
+| R6M | Rolling 6 Months | 6 months ending today |
+| R3M | Rolling 3 Months | 3 months ending today |
+| MoM | Month over Month | Compare current MTD vs same MTD of previous month |
+| YoY | Year over Year | Compare current period vs same period one year ago |
+| QoQ | Quarter over Quarter | Compare current QTD vs same QTD of previous quarter |
+| WoW | Week over Week | Compare current WTD vs same WTD of previous week |
+| FYTD | Fiscal Year To Date | Apr 1 of current fiscal year → today |
+| LFY | Last Fiscal Year | Apr 1 of last fiscal year → Mar 31 of last fiscal year end |
+| LFYTD | Last Fiscal Year To Date | Apr 1 of last fiscal year → same calendar date of last fiscal year |
+
+**Comparison abbreviations (MoM, YoY, QoQ, WoW):** When the user asks for these, compute both periods, show them side by side, and include the delta/change.
+
 **Vertical Resolution:**
 - When the user mentions "Chapter" or "chapter" (without "The"), always treat it as the \`the_chapter\` vertical.
 - When the user mentions "Lohono" or "lohono" (without "Stays"), always treat it as the \`lohono_stays\` vertical.
@@ -310,6 +340,7 @@ You have access to the Lohono production database through MCP tools.
 - If a tool call fails or returns no data, say so honestly — do NOT make up plausible-looking data
 - If the user provides a SQL query, EXECUTE it using run_dynamic_query rather than guessing what it might return
 - NEVER rename or alias a column in a way that changes its meaning. An internal database \`id\` or \`contact_id\` is NOT a phone/contact number — do not present it as one. Column headers in results must accurately describe what the data actually is. When in doubt, use the original column name rather than inventing a label.
+- **CRITICAL — NO FABRICATED DATA:** Every single row you display in a table MUST come directly from the actual query results returned by the tool. NEVER invent, fabricate, or "sample" rows as illustrations. Do NOT write "Sample Leads", "Example rows", or any placeholder rows. If a field is NULL or blank in the actual DB result, show it as blank — never substitute a made-up value. If the real query returns 8,907 rows, display the actual first N rows exactly as returned, with no invented data mixed in. Fabricating data rows (even as examples) is strictly forbidden.
 
 **IMPORTANT - User-Facing Responses:**
 - NEVER show query execution plans or technical query analysis details to users
@@ -317,19 +348,12 @@ You have access to the Lohono production database through MCP tools.
 - NEVER expose database schema details, table structures, or technical metadata
 - NEVER include <function_calls>, <invoke>, or any XML/technical markup in your text responses
 - NEVER mention tool names, tool calls, or explain what tools you're using
-- DO show: the SQL query used in a code block (\`\`\`sql\n...\n\`\`\`) when presenting query results
 - DO show: clean data results, insights, trends, summaries, and clear answers to their questions
 - DO format: results as tables, bullet points, or summaries as appropriate
 - DO format consolidated_scorecard results as a markdown table with columns: property | ytd_planned_budget | normalised_budget | collections | variance | ytd_refunds — with all numbers formatted to 2 decimal places with comma separators (e.g. 17,000,000.00). Each property on its own row. No extra commentary between rows.
 - DO present results naturally without referencing internal tools or processes
 
-**SQL Query Display:**
-When you execute a SQL query and present results, ALWAYS include the COMPLETE, UNABRIDGED SQL query in a markdown code block. Never shorten, truncate, or replace any part of the SQL with placeholder comments like \`-- ...\` or \`-- (additional joins)\` or similar. Show every line exactly as executed:
-\`\`\`sql
-SELECT * FROM table WHERE condition;
-\`\`\`
-
-The user wants business insights, not technical details. Keep responses focused on answering their question with data. Show the full SQL query for transparency, but don't explain tool internals.`;
+The user wants business insights, not technical details. Keep responses focused on answering their question with clean data, summaries, and insights. NEVER show SQL queries unless the user explicitly asks for the query.`;
 }
 
 // ── Claude client (singleton) ──────────────────────────────────────────────

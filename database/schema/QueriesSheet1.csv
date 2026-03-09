@@ -3818,11 +3818,12 @@ select enquiries.slug, enquiries.name,
 'Enquiry', case when is_trash=TRUE then 'trash' else 'Enquiry' end, enquiries.location, date(enquiries.created_at + interval '5 hours 30 minutes'),
 to_char(date(enquiries.created_at + interval '330 minutes'),'Mon-YY') as enquired_month,
 INITCAP(REPLACE(enquiries.source, '_', ' ')) AS status,
-agents.name, enquiries.source_city, enquiries.source_region, '', '', '',
+agents.name, enquiries.source_city, enquiries.source_region, enquiries.source_others, staffs.name AS poc_exec_name, '',
 meta -> 'utm_source' as utm_source,	meta -> 'utm_campaign' as utm_campaign, meta -> 'utm_medium' as utm_medium,
 case when is_trash is TRUE then 'Yes' else 'No' end as trash
 from enquiries
 left join agents on enquiries.agent_id=agents.id
+left join staffs on staffs.id=enquiries.staff_id
 WHERE enquiries.vertical='development'
 and enquiry_type='enquiry'
 and leadable_id is null
@@ -3980,12 +3981,13 @@ select enquiries.slug, enquiries.name,
 'enquiry', '', enquiries.location, date(enquiries.created_at + interval '5 hours 30 minutes'),
 date_trunc('month',enquiries.created_at + interval '5 hours 30 minutes'),
 enquiries.source,
-agents.name, enquiries.source_city, INITCAP(enquiries.source_region) AS source_region, '', '', '',
+agents.name, enquiries.source_city, INITCAP(enquiries.source_region) AS source_region, enquiries.source_others, staffs.name AS poc_exec_name, '',
 meta -> 'utm_source' as utm_source,	meta -> 'utm_campaign' as utm_campaign, meta -> 'utm_medium' as utm_medium,
 null, null, null, '', '', 
 case when is_trash is TRUE then 'Yes' else 'No' end as trash
 from enquiries
 left join agents on enquiries.agent_id=agents.id
+left join staffs on staffs.id=enquiries.staff_id
 WHERE enquiries.vertical='development'
 and enquiry_type='enquiry'
 and leadable_id is null
@@ -4006,8 +4008,11 @@ SELECT development_opportunities.slug,
  date(development_opportunities.enquired_at + interval '330 minutes') as enquired_date,
 date_trunc('month',development_opportunities.enquired_at + interval '5 hours 30 minutes') as enquired_month,
 date(maal_laao_at + interval '330 minutes') as moved_to_sale,
- development_opportunities.source
+ development_opportunities.source,
+ development_opportunities.source_city,
+ staffs1.name AS poc_exec_name
 FROM development_opportunities
+left join staffs AS staffs1 ON development_opportunities.poc_exec_id = staffs1.id
 where development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 and development_opportunities.source != 'DnB'
 ) as a
@@ -4035,11 +4040,12 @@ and date(a.enquired_date + interval '5 hours 30 minutes') <= date_trunc('month',
 union
 
 select enquiries.slug, enquiries.name,
-'enquiry', '', case when source_region is null then 'Unclassified' else INITCAP(source_region) end as source_region, date(enquiries.created_at + interval '5 hours 30 minutes'),
-date_trunc('month',enquiries.created_at + interval '5 hours 30 minutes'),null, source,
-null, null,
+'enquiry', '', case when enquiries.source_region is null then 'Unclassified' else INITCAP(enquiries.source_region) end as source_region, date(enquiries.created_at + interval '5 hours 30 minutes'),
+date_trunc('month',enquiries.created_at + interval '5 hours 30 minutes'),null, enquiries.source,
+enquiries.source_city, staffs.name AS poc_exec_name,
 case when is_trash is TRUE then 'Yes' else 'No' end as trash
 from enquiries
+left join staffs on staffs.id=enquiries.staff_id
 WHERE enquiries.vertical='development'
 and enquiry_type='enquiry'
 and leadable_id is null
@@ -4980,11 +4986,12 @@ select enquiries.slug, enquiries.name,
 'Enquiry', case when is_trash=TRUE then 'trash' else 'Enquiry' end, enquiries.location, date(enquiries.created_at + interval '5 hours 30 minutes'),
 to_char(date(enquiries.created_at + interval '330 minutes'),'Mon-YY') as enquired_month,
 INITCAP(REPLACE(enquiries.source, '_', ' ')) AS status,
-agents.name, enquiries.source_city, enquiries.source_region, '', '', '',
+agents.name, enquiries.source_city, enquiries.source_region, enquiries.source_others, staffs.name AS poc_exec_name, '',
 meta -> 'utm_source' as utm_source,	meta -> 'utm_campaign' as utm_campaign, meta -> 'utm_medium' as utm_medium,
 case when is_trash is TRUE then 'Yes' else 'No' end as trash
 from enquiries
 left join agents on enquiries.agent_id=agents.id
+left join staffs on staffs.id=enquiries.staff_id
 WHERE enquiries.vertical='chapter'
 and enquiry_type='enquiry'
 and leadable_id is null
@@ -5029,25 +5036,25 @@ and lower(chapter_opportunities.name) != 'test')
 AND maal_laao_at IS NULL
 AND status != 'closed'
 ORDER BY ageing DESC"
-Overall Leads & Closed Leads | Chapter,"select a.*,b.moved_to_prospect,c.moved_to_account,d.maal_laao_date, 
-INITCAP(REPLACE(closed_reason,'_',' ')) AS closed_reason, explanation, '-' as Trash FROM
+ Overall Leads & Closed Leads | Chapter,"select a.*,b.moved_to_prospect,c.moved_to_account,d.maal_laao_date,
+COALESCE(INITCAP(REPLACE(closed_reason,'_',' ')), 'N/A') AS closed_reason, explanation, '-' as Trash FROM
 (
 SELECT chapter_opportunities.slug,
        chapter_opportunities.name,
  chapter_opportunities.current_stage,
- chapter_opportunities.status,
- chapter_opportunities.interested_location,
+ COALESCE(INITCAP(REPLACE(chapter_opportunities.status,'_',' ')), 'N/A') as status,
+ COALESCE(chapter_opportunities.interested_location, 'N/A') as interested_location,
  date(chapter_opportunities.enquired_at + interval '330 minutes') as enquired_date,
 date_trunc('month',chapter_opportunities.enquired_at + interval '5 hours 30 minutes') as enquired_month,
- chapter_opportunities.source,
- agents.name as agent_name,
- chapter_opportunities.source_city,
- INITCAP(chapter_opportunities.source_region) as source_region,
+ COALESCE(INITCAP(REPLACE(chapter_opportunities.source,'_',' ')), 'N/A') as source,
+ COALESCE(agents.name, 'N/A') as agent_name,
+ COALESCE(chapter_opportunities.source_city, 'N/A') as source_city,
+ COALESCE(INITCAP(chapter_opportunities.source_region), 'N/A') as source_region,
  --chapter_opportunities.interested_home_types,
- chapter_opportunities.source_others,
- staffs1.name AS poc_exec_name,
- staffs2.name AS poc_head_name,
- chapter_opportunities.meta -> 'utm_source' as utm_source,	chapter_opportunities.meta -> 'utm_campaign' as utm_campaign, 
+ COALESCE(chapter_opportunities.source_others, 'N/A') as source_others,
+ COALESCE(staffs1.name, 'N/A') AS poc_exec_name,
+ COALESCE(staffs2.name, 'N/A') AS poc_head_name,
+ chapter_opportunities.meta -> 'utm_source' as utm_source,	chapter_opportunities.meta -> 'utm_campaign' as utm_campaign,
  chapter_opportunities.meta -> 'utm_medium' as utm_medium
 FROM chapter_opportunities
 left join agents on agents.id=chapter_opportunities.agent_id
@@ -5067,7 +5074,7 @@ stage_histories.updated_at + interval '330 minutes' as moved_to_prospect,chapter
  RANK() OVER (PARTITION BY stage_histories.leadable_id,
                             stage_histories.leadable_type
                              ORDER BY stage_histories.updated_at ASC) date_rank
-FROM chapter_opportunities 
+FROM chapter_opportunities
 inner join stage_histories on chapter_opportunities.id=stage_histories.leadable_id AND leadable_type='Chapter::Opportunity'
 inner join stages on stage_histories.stage_id=stages.id
 WHERE vertical = 'chapter' AND code = 'prospect'
@@ -5086,7 +5093,7 @@ stage_histories.updated_at + interval '330 minutes' as moved_to_account,chapter_
  RANK() OVER (PARTITION BY stage_histories.leadable_id,
                             stage_histories.leadable_type
                              ORDER BY stage_histories.updated_at ASC) date_rank
-FROM chapter_opportunities 
+FROM chapter_opportunities
 inner join stage_histories on chapter_opportunities.id=stage_histories.leadable_id AND leadable_type='Chapter::Opportunity'
 inner join stages on stage_histories.stage_id=stages.id
 WHERE vertical = 'chapter' AND code = 'account'
@@ -5127,11 +5134,11 @@ rank() OVER (Partition by activities.leadable_id order by tasks.performed_at asc
 from tasks
 inner join activities on tasks.id= activities.feedable_id
 inner join chapter_opportunities on chapter_opportunities.id=activities.leadable_id
-where tasks.rating='closed' 
+where tasks.rating='closed'
 and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
-and lower(chapter_opportunities.name) != 'test') 
+and lower(chapter_opportunities.name) != 'test')
 and activities.feedable_type='Task' and activities.leadable_type='Chapter::Opportunity'
-) x 
+) x
 where ranking=1
 ) e on a.slug=e.slug
 
@@ -5141,12 +5148,12 @@ AND date(a.enquired_date) <= date_trunc('month', CURRENT_DATE) + interval '1 mon
 union
 
 select enquiries.slug, enquiries.name,
-'enquiry', '', enquiries.location, date(enquiries.created_at + interval '5 hours 30 minutes'),
+'enquiry', 'N/A', COALESCE(enquiries.location, 'N/A'), date(enquiries.created_at + interval '5 hours 30 minutes'),
 date_trunc('month',enquiries.created_at + interval '5 hours 30 minutes'),
-enquiries.source,
-agents.name, enquiries.source_city, INITCAP(enquiries.source_region) AS source_region, '', '', '',
+COALESCE(INITCAP(REPLACE(enquiries.source,'_',' ')), 'N/A'),
+COALESCE(agents.name, 'N/A'), COALESCE(enquiries.source_city, 'N/A'), COALESCE(INITCAP(enquiries.source_region), 'N/A') AS source_region, 'N/A', 'N/A', 'N/A',
 meta -> 'utm_source' as utm_source,	meta -> 'utm_campaign' as utm_campaign, meta -> 'utm_medium' as utm_medium,
-null, null, null, '', '', 
+null, null, null, 'N/A', '',
 case when is_trash is TRUE then 'Yes' else 'No' end as trash
 from enquiries
 left join agents on enquiries.agent_id=agents.id
