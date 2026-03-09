@@ -24,12 +24,14 @@ const metricEnum = ["all", ...metricKeys, "consolidated_scorecard", "ageing_anal
 const GetSalesFunnelInputSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
+  // fiscal_year is accepted for consolidated_scorecard; if omitted, auto-derived from IST clock
+  fiscal_year: z.number().int().optional(),
   metric: z.enum(metricEnum).optional().default("all"),
   vertical: z.nativeEnum(Vertical).optional().default(DEFAULT_VERTICAL),
   locations: z.array(z.string()).optional(),
 }).refine(
-  (d) => d.metric === "ageing_analysis" || (!!d.start_date && !!d.end_date),
-  { message: "start_date and end_date are required (not needed for ageing_analysis)" },
+  (d) => d.metric === "ageing_analysis" || d.metric === "consolidated_scorecard" || (!!d.start_date && !!d.end_date),
+  { message: "start_date and end_date are required for non-scorecard metrics" },
 );
 
 // ── Query result cache (Redis-backed with in-memory fallback) ───────────────
@@ -76,7 +78,7 @@ export const getSalesFunnelPlugin: ToolPlugin = {
     description:
       `MANDATORY TOOL for sales funnel metrics, consolidated dashboard scorecard, and ageing analysis. ` +
       `Use the 'metric' parameter to select a specific metric (${metricDescriptions}) or omit it / use 'all' for the full funnel. ` +
-      `For Consolidated Dashboard / Consolidated Scorecard requests — use metric='consolidated_scorecard' with start_date and end_date. ` +
+      `For Consolidated Dashboard / Consolidated Scorecard requests — use metric='consolidated_scorecard'. Dates are optional; if omitted, defaults to current Indian Financial Year (Apr 1 – today). ` +
       `For Ageing Analysis / Ageing Analysis - Consolidated Dashboard Query — use metric='ageing_analysis'. No dates needed; it is a current-state snapshot. ` +
       `CRITICAL: This is the ONLY correct way to query sales funnel or post-sales metrics. ` +
       `DO NOT write custom SQL queries — the logic is complex and already implemented correctly in this tool. ` +
@@ -89,7 +91,7 @@ export const getSalesFunnelPlugin: ToolPlugin = {
         metric: {
           type: "string",
           enum: metricEnum,
-          description: `Which metric to return. Options: ${metricEnum.join(", ")}. Default 'all' returns the full funnel. Use 'consolidated_scorecard' for the Consolidated Dashboard (requires start_date and end_date). Use 'ageing_analysis' for the Ageing Analysis Dashboard (no dates needed — current snapshot).`,
+          description: `Which metric to return. Options: ${metricEnum.join(", ")}. Default 'all' returns the full funnel. Use 'consolidated_scorecard' for the Consolidated Dashboard (dates optional — defaults to current Indian FY if omitted). Use 'ageing_analysis' for the Ageing Analysis Dashboard (no dates needed — current snapshot).`,
         },
         vertical: {
           type: "string",
@@ -153,30 +155,35 @@ export const getSalesFunnelPlugin: ToolPlugin = {
 
     // ── Consolidated Scorecard path ─────────────────────────────────────────
     if (metric === "consolidated_scorecard") {
-      const start_date = parsed.start_date!;
-      const end_date = parsed.end_date!;
-      const cacheKey = `consolidated:${start_date}:${end_date}:${(locations || []).sort().join(",")}`;
+      // Derive fiscal year from IST clock when not explicitly provided.
+      // FY starts April 1 — if we're in Jan-Mar the FY started the previous calendar year.
+      const nowUtc = new Date();
+      const istOffsetMs = 5.5 * 60 * 60 * 1000;
+      const nowIst = new Date(nowUtc.getTime() + istOffsetMs);
+      const fyStartYear = parsed.fiscal_year ??
+        (nowIst.getMonth() >= 3 ? nowIst.getFullYear() : nowIst.getFullYear() - 1);
+
+      const cacheKey = `consolidated:fy${fyStartYear}:${(locations || []).sort().join(",")}`;
       const cached = await consolidatedCache.get(cacheKey);
       if (cached) {
         logger.info(`Cache hit: ${cacheKey}`);
         const responseData: Record<string, unknown> = {
           metric: "consolidated_scorecard",
-          start_date, end_date, locations,
+          fiscal_year: fyStartYear, locations,
           rowCount: cached.rowCount,
           rows: cached.rows,
         };
         return { content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }] };
       }
 
-      const query = buildConsolidatedScorecardQuery(start_date, end_date, locations);
+      const query = buildConsolidatedScorecardQuery(fyStartYear, locations);
       const result = await executeReadOnlyQuery(query.sql, []);
       const rows = result.rows as Record<string, unknown>[];
-      const ttl = isHistoricalRange(end_date) ? HISTORICAL_TTL : CURRENT_TTL;
-      await consolidatedCache.set(cacheKey, { rows, rowCount: result.rowCount }, ttl);
+      await consolidatedCache.set(cacheKey, { rows, rowCount: result.rowCount }, CURRENT_TTL);
 
       const responseData: Record<string, unknown> = {
         metric: "consolidated_scorecard",
-        start_date, end_date, locations,
+        fiscal_year: fyStartYear, locations,
         rowCount: result.rowCount,
         rows,
       };
@@ -184,6 +191,7 @@ export const getSalesFunnelPlugin: ToolPlugin = {
         responseData._debug = {
           tool: "get_sales_funnel",
           metric: "consolidated_scorecard",
+          fiscal_year: fyStartYear,
           cacheHit: false,
           sql: query.sql,
           rowCount: result.rowCount,

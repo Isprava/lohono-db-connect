@@ -22,7 +22,11 @@ const RunPredefinedQueryInputSchema = z.object({
   locations: z
     .array(z.string().min(1))
     .optional()
-    .describe("Optional list of locations to filter by (e.g. ['Goa', 'Alibaug']). Fuzzy matching via ILIKE is applied."),
+    .describe("Optional list of locations to include (e.g. ['Goa', 'Alibaug']). Fuzzy matching via ILIKE is applied."),
+  exclude_locations: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Optional list of locations to exclude (e.g. ['Goa']). Rows matching these locations are removed from results via NOT ILIKE."),
   variant: z
     .enum(["with_extensions", "without_extensions"])
     .optional()
@@ -62,6 +66,7 @@ interface ExecOpts {
   start_date?: string;
   end_date?: string;
   locations?: string[];
+  exclude_locations?: string[];
   startTime: number;
 }
 
@@ -77,8 +82,10 @@ async function executeEntry(
   let sql = entry.sql;
   sql = replaceDatesInSql(sql, effectiveStartDate, effectiveEndDate);
 
-  if (opts.locations && opts.locations.length > 0) {
-    sql = injectLocationFilter(sql, opts.locations);
+  const hasLocFilter = (opts.locations && opts.locations.length > 0) ||
+    (opts.exclude_locations && opts.exclude_locations.length > 0);
+  if (hasLocFilter) {
+    sql = injectLocationFilter(sql, opts.locations, opts.exclude_locations);
   }
 
   const variantLabel = entry.variant ? ` [${entry.variant}]` : "";
@@ -94,7 +101,8 @@ async function executeEntry(
 
   // Cache key includes variant for isolation
   const locKey = opts.locations && opts.locations.length > 0 ? opts.locations.sort().join(",") : "";
-  const cacheKey = `predefined:${entry.title}:${entry.variant || "default"}:${effectiveStartDate}:${effectiveEndDate}:${locKey}`;
+  const exLocKey = opts.exclude_locations && opts.exclude_locations.length > 0 ? "ex:" + opts.exclude_locations.sort().join(",") : "";
+  const cacheKey = `predefined:${entry.title}:${entry.variant || "default"}:${effectiveStartDate}:${effectiveEndDate}:${locKey}:${exLocKey}`;
   const cached = await queryCache.get(cacheKey);
   if (cached) {
     logger.info(`Cache hit: ${cacheKey}`);
@@ -157,7 +165,7 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
       `Optionally provide start_date and end_date (YYYY-MM-DD) to override date boundaries. ` +
       `If no dates are provided, defaults are auto-computed: start_date = current FY start (April 1), ` +
       `end_date = today's IST date. All hardcoded dates and CURRENT_DATE/NOW() expressions are replaced accordingly. ` +
-      `Optionally provide locations (e.g. ['Goa', 'Alibaug']) to filter results by location. Fuzzy matching is applied. ` +
+      `Optionally provide locations to include or exclude_locations to exclude (e.g. exclude_locations: ['Goa'] for non-Goa data). Fuzzy matching is applied. ` +
       `ALWAYS use this tool for named funnel reports: "YTD Funnel Isprava", "LYTD Funnel Isprava", "YTD Funnel Chapter", "LYTD Funnel Chapter", "FY Funnel", "Weekly Insights". ` +
       `Do NOT use get_sales_funnel for these — this tool has the correct SQL.`,
     inputSchema: {
@@ -178,7 +186,12 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
         locations: {
           type: "array",
           items: { type: "string" },
-          description: "Optional list of locations to filter by (e.g. ['Goa', 'Alibaug']). Fuzzy matching is applied.",
+          description: "Optional list of locations to include (e.g. ['Goa', 'Alibaug']). Fuzzy matching via ILIKE is applied.",
+        },
+        exclude_locations: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of locations to exclude (e.g. ['Goa']). Rows matching these locations are removed from results via NOT ILIKE.",
         },
         variant: {
           type: "string",
@@ -192,13 +205,14 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
 
   async handler(args): Promise<ToolResult> {
     const parsed = RunPredefinedQueryInputSchema.parse(args);
-    const { query: searchTerm, start_date, end_date, locations, variant } = parsed;
+    const { query: searchTerm, start_date, end_date, locations, exclude_locations, variant } = parsed;
     const startTime = Date.now();
     logger.info("run_predefined_query called", {
       searchTerm,
       start_date,
       end_date,
       locations,
+      exclude_locations,
       variant,
     });
 
@@ -263,14 +277,14 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
         }
         // Execute single variant
         return await executeEntry(filtered[0].entry, filtered[0].score, {
-          start_date, end_date, locations, startTime,
+          start_date, end_date, locations, exclude_locations, startTime,
         });
       }
 
       // No variant specified — run both and return side by side
       const results = await Promise.all(
         topMatches.map((m) =>
-          executeEntry(m.entry, m.score, { start_date, end_date, locations, startTime })
+          executeEntry(m.entry, m.score, { start_date, end_date, locations, exclude_locations, startTime })
             .then((res) => {
               const data = JSON.parse(res.content[0].text);
               return { variant: m.entry.variant!, data };
@@ -306,7 +320,7 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
 
     // ── Confident single match — execute ──────────────────────────────────
     return await executeEntry(matches[0].entry, matches[0].score, {
-      start_date, end_date, locations, startTime,
+      start_date, end_date, locations, exclude_locations, startTime,
     });
   },
 };

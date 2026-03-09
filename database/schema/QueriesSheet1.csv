@@ -3569,173 +3569,216 @@ and date_part('day',maal_laao_at + interval '330 minutes') <=
     date_part('day',(now() - interval '1 year') + interval '330 minutes')
 and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
 )j on a.metric = j.metric "
-MTD Source-wise Bifurcation - Isprava,"SELECT 
-a.metric,
-leads + coalesce(leads2,0) as leads,
-coalesce(prospects,0) as Prospects,
-coalesce(accounts,0) as Accounts,
-coalesce(sales,0) as Sales,
-f.meetings,
-g.viewings,
-l2p::int,
-p2a::int,
-a2s::int
+MTD Source-wise Bifurcation - Isprava,"select 
+    a.source,
+    sum(coalesce(leads,0) + coalesce(leads2,0) + coalesce(leads3,0)) as leads,
+    sum(coalesce((prospects),0)) as prospects, 
+    sum(coalesce((accounts),0)) as accounts,
+    sum(coalesce((sales),0)) as sales
 
-FROM
+from
 (
-SELECT 'Metric' as metric,
-  count(distinct(development_opportunities.slug)) as leads
-FROM development_opportunities
-WHERE (enquired_at + interval '330 minutes')::date >= 
-        cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-  AND (enquired_at + interval '330 minutes')::date < 
-        cast(date_trunc('month', CURRENT_DATE + interval '330 minutes' + INTERVAL '1 MONTH') AS date)
-  AND date_part('day', enquired_at + interval '330 minutes') <= 
-        date_part('day', now() + interval '330 minutes')
-  AND development_opportunities.slug NOT IN ('569657C6','5EB1A14A','075E54DF')
-  and development_opportunities.source != 'DnB'
+SELECT date::date, source
+FROM generate_series(
+        date_trunc('month', current_date)::timestamp,
+        current_date,
+        '1 day'::interval
+) AS date
+        CROSS JOIN (
+       select distinct source FROM
+        (
+        select 
+       CASE WHEN development_opportunities.source = 'agent' 
+        then 'Agent'
+        WHEN development_opportunities.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+        THEN 'Digital'
+        WHEN development_opportunities.source IN ('lohono.com','lohono') 
+        THEN 'Lohono'
+        WHEN development_opportunities.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+        THEN 'Reference + Word of Mouth'
+        WHEN development_opportunities.source= 'repeat_client' 
+        THEN 'Repeat Client'
+        ELSE 'Other' end as source
+      from development_opportunities) as source)
+group by source, date      
 ) a
 
 left join
 (
-select 'Metric' as metric,
+select 
+    source, date,
+    sum(coalesce(leads,0))::int as leads
+FROM
+(
+SELECT date(enquired_at + interval '330 minutes') as date,
+CASE WHEN development_opportunities.source = 'agent' 
+        then 'Agent'
+        WHEN development_opportunities.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+        THEN 'Digital'
+        WHEN development_opportunities.source IN ('lohono.com','lohono') 
+        THEN 'Lohono'
+        WHEN development_opportunities.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+        THEN 'Reference + Word of Mouth'
+        WHEN development_opportunities.source= 'repeat_client' 
+        THEN 'Repeat Client'
+        ELSE 'Other' end as source,
+count(distinct(development_opportunities.slug)) as leads
+FROM development_opportunities
+WHERE development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+and development_opportunities.source != 'DnB'
+group by source, development_opportunities.meta, date
+) query_1 
+group by source, date
+) b on a.source=b.source  and a.date = b.date
+
+left join
+(
+select 
+    source, 
+    date,
+    sum(coalesce(leads2,0))::int as leads2
+FROM
+(
+select date(enquiries.created_at + interval '330 minutes') as date,
+CASE WHEN enquiries.source = 'agent' 
+        then 'Agent'
+        WHEN enquiries.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+        THEN 'Digital'
+        WHEN enquiries.source IN ('lohono.com','lohono') 
+        THEN 'Lohono'
+        WHEN enquiries.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+        THEN 'Reference + Word of Mouth'
+        WHEN enquiries.source= 'repeat_client' 
+        THEN 'Repeat Client'
+        ELSE 'Other' end as source, 
       count(id) as leads2
 from enquiries
 WHERE enquiries.vertical='development'
 and enquiry_type='enquiry'
 and leadable_id is null
-and (created_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-and (created_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',created_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-) b on a.metric = b.metric
+group by source, enquiries.meta,date(enquiries.created_at + interval '5 hours 30 minutes')
+) x 
+group by source, date
+) c on a.source=c.source and a.date= c.date 
+
+left join 
+(
+select 
+    source, 
+    date,
+    sum(coalesce(leads3,0))::int as leads3
+FROM
+(
+select date(opportunity_merges.enquired_at + interval '330 minutes') as date,
+CASE WHEN opportunity_merges.source = 'agent' 
+        then 'Agent'
+        WHEN opportunity_merges.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+        THEN 'Digital'
+        WHEN opportunity_merges.source IN ('lohono.com','lohono') 
+        THEN 'Lohono'
+        WHEN opportunity_merges.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+        THEN 'Reference + Word of Mouth'
+        WHEN opportunity_merges.source= 'repeat_client' 
+        THEN 'Repeat Client'
+        ELSE 'Other' end as source, 
+      count(distinct(development_opportunities.slug)) as leads3
+FROM development_opportunities
+inner join opportunity_merges on opportunity_merges.leadable_id = development_opportunities.id
+and opportunity_merges.leadable_type = 'Development::Opportunity'
+WHERE development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+group by opportunity_merges.source, opportunity_merges.meta,date(opportunity_merges.enquired_at + interval '330 minutes')
+) x 
+group by source, date
+)g on a.source = g.source AND a.date = g.date
 
 left join
 (
+select 
+    source, 
+    date,
+    sum(coalesce(prospects,0))::int as prospects
+FROM
+(
 SELECT
-    'Metric' as metric,
-     count(distinct(development_opportunities.slug)) as prospects
+date(lead_completed_at + interval '5 hours 30 minutes') as date,
+CASE WHEN development_opportunities.source = 'agent' 
+        then 'Agent'
+        WHEN development_opportunities.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+        THEN 'Digital'
+        WHEN development_opportunities.source IN ('lohono.com','lohono') 
+        THEN 'Lohono'
+        WHEN development_opportunities.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+        THEN 'Reference + Word of Mouth'
+        WHEN development_opportunities.source= 'repeat_client' 
+        THEN 'Repeat Client'
+        ELSE 'Other' end as source,
+      count(distinct(development_opportunities.slug)) as prospects
 FROM development_opportunities
-WHERE (lead_completed_at + interval '330 minutes')::date >=
-    cast(date_trunc('month',(CURRENT_DATE-interval '1 year') + interval '330 minutes') AS date)
-and (lead_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',lead_completed_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF'))c on a.metric = c.metric 
+WHERE development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+group by source,development_opportunities.meta, date(lead_completed_at + interval '5 hours 30 minutes')
+) query_1 
+group by source, date
+) d on a.source=d.source and a.date = d.date 
 
 left join
 (
+select 
+    source,
+    date, 
+    sum(coalesce(accounts,0))::int as accounts
+FROM
+(
 SELECT
-      'Metric' as metric,
-      count(distinct(development_opportunities.slug)) as accounts
+CASE WHEN development_opportunities.source = 'agent' 
+        then 'Agent'
+        WHEN development_opportunities.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+        THEN 'Digital'
+        WHEN development_opportunities.source IN ('lohono.com','lohono') 
+        THEN 'Lohono'
+        WHEN development_opportunities.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+        THEN 'Reference + Word of Mouth'
+        WHEN development_opportunities.source= 'repeat_client' 
+        THEN 'Repeat Client'
+        ELSE 'Other' end as source,
+      count(distinct(development_opportunities.slug)) as accounts,
+      date(prospect_completed_at + interval '5 hours 30 minutes') as date
 FROM development_opportunities
-WHERE (prospect_completed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (prospect_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',prospect_completed_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
-)d on a.metric = d.metric 
+WHERE development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+group by source, development_opportunities.meta, date(prospect_completed_at + interval '5 hours 30 minutes')
+) query_1 
+group by source, date
+) e on a.source=e.source and a.date=e.date
 
 left join
 (
 SELECT 
-    'Metric' as metric,
-    COUNT(distinct(development_opportunities.slug)) AS sales
-FROM development_opportunities
-WHERE (maal_laao_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (maal_laao_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',maal_laao_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
-)e on a.metric = e.metric 
+    x.source,
+    x.date,
+    sum((slug))::int as sales
+FROM
+  (SELECT 
+        date(development_opportunities.maal_laao_at + interval '5 hours 30 minutes') as date,
+        COUNT(distinct(development_opportunities.slug)) AS slug, 
+        CASE WHEN development_opportunities.source = 'agent' 
+            then 'Agent'
+            WHEN development_opportunities.source IN ('direct_mailer','emailer','google','facebook','instagram','linkedin','youtube','signage','isprava','isprava.com','isprava.com_chatbot','direct_call') 
+            THEN 'Digital'
+            WHEN development_opportunities.source IN ('lohono.com','lohono') 
+            THEN 'Lohono'
+            WHEN development_opportunities.source IN ('reference','word_of_mouth','isprava_employee','chapter_employee','chapter_reference','homeowner_ref') 
+            THEN 'Reference + Word of Mouth'
+            WHEN development_opportunities.source= 'repeat_client' 
+            THEN 'Repeat Client'
+            ELSE 'Other' end as source
+   FROM development_opportunities
+  WHERE development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
+group by source, development_opportunities.meta, date(development_opportunities.maal_laao_at + interval '5 hours 30 minutes')
+) x
+group by source, date 
+) f on a.source=f.source and a.date = f.date 
+group by a.source
+order by leads"
 
-left join 
-(
-select
-    'Metric' as metric,
-    count(distinct(development_opportunities.slug)) as meetings
-from tasks
-inner join activities on tasks.id= activities.feedable_id
-inner join medium on tasks.medium_id=medium.id
-inner join development_opportunities on development_opportunities.id=activities.leadable_id
-WHERE (performed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (performed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',performed_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-AND activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
-and ( medium.name='Meeting'))f on a.metric = f.metric
-
-left join
-(
-    select 'Metric' as metric,
-    count(distinct(development_opportunities.slug)) as viewings
-from tasks
-inner join activities on tasks.id= activities.feedable_id
-inner join medium on tasks.medium_id=medium.id
-inner join development_opportunities on development_opportunities.id=activities.leadable_id
-inner join staffs on staffs.id=development_opportunities.poc_exec_id
-where activities.feedable_type='Task' and activities.leadable_type='Development::Opportunity'
-and medium.name in ('Goa Viewing','Alibaug Viewing','Coonoor Viewing','Viewing','Site Visit')
-and (performed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (performed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',performed_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-) g on a.metric = g.metric
-
-left join 
-(
-SELECT
-    'Metric' as metric, 
-    avg(date(lead_completed_at + interval '330 minutes') - date(enquired_at + interval '330 minutes')) as l2p
-FROM development_opportunities
-WHERE (lead_completed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (lead_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',lead_completed_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF'))h on a.metric = h.metric 
-
-left join
-(
-SELECT
-      'Metric' as metric,
-      avg(date(prospect_completed_at + interval '330 minutes') - date(lead_completed_at + interval '330 minutes')) as p2a
-FROM development_opportunities
-WHERE (prospect_completed_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (prospect_completed_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',prospect_completed_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
-)i on a.metric = i.metric 
-
-left join
-(
-SELECT 
-    'Metric' as metric,
-    avg(date(maal_laao_at + interval '330 minutes') - date(prospect_completed_at + interval '330 minutes')) as a2s
-FROM development_opportunities
-WHERE (maal_laao_at + interval '330 minutes')::date >= 
-    cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
-and (maal_laao_at + interval '330 minutes')::date < 
-    (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
-and date_part('day',maal_laao_at + interval '330 minutes') <= 
-    date_part('day',now() + interval '330 minutes')
-and development_opportunities.slug not in ('569657C6','5EB1A14A','075E54DF')
-)j on a.metric = j.metric "
 Open Leads- Isprava,"select a.*, '-' as trash FROM
 (
 SELECT development_opportunities.slug,
@@ -3787,7 +3830,7 @@ and is_trash=FALSE
 and (enquiries.created_at + interval '330 minutes')::date >= cast(date_trunc('month',CURRENT_DATE + interval '330 minutes') AS date)
 and (enquiries.created_at + interval '330 minutes')::date < (cast(date_trunc('month',CURRENT_DATE + interval '330 minutes'  + INTERVAL '1 MONTH' ) AS date))
 and date_part('day',enquiries.created_at + interval '330 minutes') <= date_part('day',now() + interval '330 minutes')"
-Open Prospects MTD - Isprava,"SELECT 
+Open Prospects MTD - Isprava,"SELECT
     slug,
     name,
     date(enquired_at + interval '330 minutes') AS enquired_date,
@@ -3800,8 +3843,7 @@ FROM development_opportunities
 WHERE current_stage= 'prospect'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%'
 AND lower(name) != 'test')
-and date(lead_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
+and date(lead_completed_at + interval '330 minutes') >= '2022-04-01'
 AND maal_laao_at IS NULL
 AND status != 'closed'
 ORDER BY ageing DESC"
@@ -4981,8 +5023,7 @@ Open Accounts - Chapter,"SELECT
 FROM chapter_opportunities
 WHERE current_stage= 'account'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%')
-and date(prospect_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-and date_part('day', prospect_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
+and date(prospect_completed_at + interval '330 minutes') >= '2023-04-01'
 and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
 and lower(chapter_opportunities.name) != 'test')
 AND maal_laao_at IS NULL

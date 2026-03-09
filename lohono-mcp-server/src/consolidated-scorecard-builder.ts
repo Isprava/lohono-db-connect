@@ -16,18 +16,32 @@ export function locationCond(
 
 /**
  * Builds the Consolidated Scorecard SQL for both Isprava and Chapter verticals.
- * Accepts explicit start/end dates so any date range can be queried.
- * All date filter literals are server-computed from caller params; no raw user
- * input is interpolated (callers must validate dates before passing).
- * Location filtering is optional via ILIKE.
+ *
+ * @param fiscalYear - The year the Indian Financial Year **starts** (e.g. 2025
+ *   for FY 2025-26, which runs April 1 2025 → March 31 2026).
+ *
+ * Date windows derived internally to match Redash exactly:
+ *   - LYTD budget cutoff  : <= Feb 28/29 of fiscalYear          (construction/payment milestones)
+ *   - LYTD actuals cutoff : <= Mar 31 of fiscalYear              (collected/refunds)
+ *   - YTD budget start    : >= Mar 1 of fiscalYear               (milestones, incl. transitional month)
+ *   - YTD actuals start   : >= Apr 1 of fiscalYear               (payments only from new FY)
+ *   - YTD / milestone end : DATE(now() + INTERVAL '330 minutes') (always open-ended)
  */
 export function buildConsolidatedScorecardQuery(
-  startDate: string,
-  endDate: string,
+  fiscalYear: number,
   locations?: string[],
 ): ParameterizedQuery {
-  const s = startDate;  // short alias for readability inside template strings
-  const e = endDate;
+  // ── Derive the 5 Redash date boundaries from the fiscal year ────────────────
+  // Feb 28 vs 29: determine if fiscalYear is a leap year
+  const isLeap = (fiscalYear % 4 === 0 && fiscalYear % 100 !== 0) || fiscalYear % 400 === 0;
+  const febEnd = isLeap ? "29" : "28";
+
+  const lytdBudgetEnd = `${fiscalYear}-02-${febEnd}`;      // <= Feb 28/29
+  const lytdActualsEnd = `${fiscalYear}-03-31`;             // <= Mar 31
+  const ytdBudgetStart = `${fiscalYear}-03-01`;             // >= Mar 1 (budget milestones)
+  const ytdActualsStart = `${fiscalYear}-04-01`;             // >= Apr 1 (YTD actuals)
+  const ytdEnd = `DATE(now() + INTERVAL '330 minutes')`;  // always open-ended
+
   const loc = locationCond(locations, "o");
 
   const sql = `
@@ -63,7 +77,7 @@ lytd_construction AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND phd.is_construction_linked = TRUE
       AND development_bank_accounts.is_subsidiary = TRUE
-      AND dt.ops_actual_date BETWEEN '${s}' AND '${e}'
+      AND dt.ops_actual_date <= '${lytdBudgetEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -92,7 +106,7 @@ lytd_construction_revised AS (
       AND CASE
             WHEN dt.client_communication_date > dt.ops_actual_date
             THEN dt.client_communication_date ELSE dt.ops_actual_date
-          END BETWEEN '${s}' AND '${e}'
+          END <= '${lytdBudgetEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -118,7 +132,7 @@ lytd_payment AS (
     LEFT  JOIN development_bank_accounts ON opba.development_bank_account_id = development_bank_accounts.id
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND development_bank_accounts.is_subsidiary = TRUE
-      AND dt.client_communication_date BETWEEN '${s}' AND '${e}'
+      AND dt.client_communication_date <= '${lytdBudgetEnd}'
       AND CASE WHEN ph.sub_phase = 'additional' AND development_bank_accounts.is_subsidiary = TRUE
                THEN FALSE ELSE phd.is_construction_linked END = FALSE
       AND ${loc}
@@ -141,7 +155,7 @@ lytd_collected AS (
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND development_bank_accounts.is_subsidiary = TRUE
       AND t.transaction_type = 'collection'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date <= '${lytdActualsEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -162,7 +176,7 @@ lytd_refunds AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND t.transaction_type = 'refund'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date <= '${lytdActualsEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -187,7 +201,7 @@ ytd_construction AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND phd.is_construction_linked = TRUE
       AND development_bank_accounts.is_subsidiary = TRUE
-      AND dt.ops_actual_date BETWEEN '${s}' AND '${e}'
+      AND dt.ops_actual_date BETWEEN '${ytdBudgetStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -214,7 +228,7 @@ ytd_construction_revised AS (
       AND dt.ops_actual_date IS NOT NULL
       AND CASE WHEN dt.client_communication_date > dt.ops_actual_date
                THEN dt.client_communication_date ELSE dt.ops_actual_date
-          END BETWEEN '${s}' AND '${e}'
+          END BETWEEN '${ytdBudgetStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -240,7 +254,7 @@ ytd_payment AS (
     LEFT  JOIN development_bank_accounts ON opba.development_bank_account_id = development_bank_accounts.id
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND development_bank_accounts.is_subsidiary = TRUE
-      AND dt.client_communication_date BETWEEN '${s}' AND '${e}'
+      AND dt.client_communication_date BETWEEN '${ytdBudgetStart}' AND ${ytdEnd}
       AND CASE WHEN ph.sub_phase = 'additional' AND development_bank_accounts.is_subsidiary = TRUE
                THEN FALSE ELSE phd.is_construction_linked END = FALSE
       AND ${loc}
@@ -263,7 +277,7 @@ ytd_collected AS (
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND development_bank_accounts.is_subsidiary = TRUE
       AND t.transaction_type = 'collection'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date BETWEEN '${ytdActualsStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -284,7 +298,7 @@ ytd_refunds AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND t.transaction_type = 'refund'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date BETWEEN '${ytdActualsStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -365,11 +379,11 @@ milestone_base_data AS (
              AND DATE(CASE WHEN client_communication_date IS NOT NULL AND ops_actual_date IS NOT NULL
                                AND client_communication_date > ops_actual_date
                           THEN client_communication_date ELSE ops_actual_date END)
-                 BETWEEN '${s}' AND '${e}')
+                 <= ${ytdEnd})
             OR
             (phd.is_construction_linked IS DISTINCT FROM TRUE
              AND client_communication_date IS NOT NULL
-             AND DATE(client_communication_date) BETWEEN '${s}' AND '${e}')
+             AND DATE(client_communication_date) <= ${ytdEnd})
           )
     GROUP BY o.slug, o.name, l.city, DATE(o.maal_laao_at + INTERVAL '330 minutes'),
              phd.step, p.name, ops_actual_date, ops_budget_date, client_communication_date,
@@ -473,7 +487,7 @@ chapter_lytd_payment AS (
           AND opba.account_type = 'base'
     LEFT  JOIN chapter_bank_accounts ON opba.chapter_bank_account_id = chapter_bank_accounts.id
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
-      AND dt.client_communication_date BETWEEN '${s}' AND '${e}'
+      AND dt.client_communication_date <= '${lytdBudgetEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -492,7 +506,7 @@ chapter_lytd_collected AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND t.transaction_type = 'collection'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date <= '${lytdActualsEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -512,7 +526,7 @@ chapter_lytd_refunds AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND t.transaction_type = 'refund'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date <= '${lytdActualsEnd}'
       AND ${loc}
     GROUP BY p.name
 ),
@@ -536,7 +550,7 @@ chapter_ytd_payment AS (
           AND opba.account_type = 'base'
     LEFT  JOIN chapter_bank_accounts ON opba.chapter_bank_account_id = chapter_bank_accounts.id
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
-      AND dt.client_communication_date BETWEEN '${s}' AND '${e}'
+      AND dt.client_communication_date BETWEEN '${ytdBudgetStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -555,7 +569,7 @@ chapter_ytd_collected AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND t.transaction_type = 'collection'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date BETWEEN '${ytdActualsStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -575,7 +589,7 @@ chapter_ytd_refunds AS (
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
       AND t.deleted_at IS NULL AND p.active = TRUE
       AND t.transaction_type = 'refund'
-      AND t.payment_date BETWEEN '${s}' AND '${e}'
+      AND t.payment_date BETWEEN '${ytdActualsStart}' AND ${ytdEnd}
       AND ${loc}
     GROUP BY p.name
 ),
@@ -628,7 +642,7 @@ chapter_milestone_base_data AS (
           AND opba.account_type = 'base'
     LEFT  JOIN chapter_bank_accounts ON opba.chapter_bank_account_id = chapter_bank_accounts.id
     WHERE p.include_in_reports = TRUE AND p.deleted_at IS NULL AND dt.deleted_at IS NULL
-      AND DATE(client_communication_date) BETWEEN '${s}' AND '${e}'
+      AND DATE(client_communication_date) <= ${ytdEnd}
       AND ${loc}
     GROUP BY o.slug, o.name, l.city, DATE(o.maal_laao_at + INTERVAL '330 minutes'),
              phd.step, p.name, ops_actual_date, ops_budget_date, client_communication_date,
