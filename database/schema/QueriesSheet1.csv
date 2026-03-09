@@ -3261,7 +3261,7 @@ SELECT
   ly_12w_avg AS last_year_12w_avg
 FROM metrics
 ORDER BY sort_order;"
-Score Card MTD - Isprava,"select 
+Scorecard MTD - Isprava,"select
     a.metric, 
     leads + coalesce(leads2,0) as leads,
     coalesce(prospects,0) as Prospects,
@@ -4969,7 +4969,7 @@ and date_part('day', lead_completed_at + interval '330 minutes') <= date_part('d
 AND maal_laao_at IS NULL
 AND status != 'closed'
 ORDER BY ageing DESC"
-Open Accounts - Chapter,"SELECT 
+Open Accounts - Chapter,"SELECT
     slug,
     name,
     current_stage,
@@ -4981,8 +4981,7 @@ Open Accounts - Chapter,"SELECT
 FROM chapter_opportunities
 WHERE current_stage= 'account'
 AND (lower(name) not like '%test%' and lower(name) not like 'test%')
-and date(prospect_completed_at + interval '330 minutes') >= cast(date_trunc('month', CURRENT_DATE + interval '330 minutes') AS date)
-and date_part('day', prospect_completed_at + interval '330 minutes') <= date_part('day', now() + interval '330 minutes')
+and date(prospect_completed_at + interval '330 minutes') >= '2023-04-01'
 and (lower(chapter_opportunities.name) not like '%test%' and lower(chapter_opportunities.name) not like 'test%'
 and lower(chapter_opportunities.name) != 'test')
 AND maal_laao_at IS NULL

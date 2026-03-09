@@ -316,13 +316,25 @@ export function matchQueries(
 
   const results: MatchResult[] = [];
 
+  // Date-period keywords that must match exactly — "mtd" must NOT
+  // partially match "lymtd", "ytd" must NOT match "lytd", etc.
+  const DATE_KEYWORDS = new Set(["mtd", "ytd", "lytd", "lymtd", "lmtd", "fy", "weekly"]);
+
   for (const entry of catalog) {
     let score = 0;
     for (const st of searchTokens) {
       if (entry.tokens.some((tt) => tt === st)) {
         // Exact token match — full weight
         score += 1;
-      } else if (entry.tokens.some((tt) => tt.includes(st) || st.includes(tt))) {
+      } else if (DATE_KEYWORDS.has(st)) {
+        // Date keyword with no exact match — skip partial matching
+        // so "mtd" doesn't match "lymtd"
+        score += 0;
+      } else if (entry.tokens.some((tt) => {
+        // Don't let search token partially match a date keyword
+        if (DATE_KEYWORDS.has(tt)) return false;
+        return tt.includes(st) || st.includes(tt);
+      })) {
         // Partial substring match — half weight
         score += 0.5;
       }
