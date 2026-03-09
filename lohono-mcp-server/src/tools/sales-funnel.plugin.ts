@@ -82,7 +82,9 @@ export const getSalesFunnelPlugin: ToolPlugin = {
       `For Ageing Analysis / Ageing Analysis - Consolidated Dashboard Query — use metric='ageing_analysis'. No dates needed; it is a current-state snapshot. ` +
       `CRITICAL: This is the ONLY correct way to query sales funnel or post-sales metrics. ` +
       `DO NOT write custom SQL queries — the logic is complex and already implemented correctly in this tool. ` +
-      `IMPORTANT EXCEPTION: Do NOT use this tool for named funnel reports such as "YTD Funnel", "LYTD Funnel", "FY Funnel", or "Weekly Insights" — use run_predefined_query for those instead.`,
+      `IMPORTANT EXCEPTION: Do NOT use this tool for named funnel reports such as "YTD Funnel", "LYTD Funnel", "FY Funnel", "Weekly Insights", ` +
+      `"Open Accounts", "Open Prospects", "Open Leads", "Closed Leads", "Overall Leads", scorecards, or conversion reports — use run_predefined_query for those instead. ` +
+      `This tool returns aggregate COUNTS only; use run_predefined_query when the user wants to see individual rows/records.`,
     inputSchema: {
       type: "object" as const,
       properties: {
