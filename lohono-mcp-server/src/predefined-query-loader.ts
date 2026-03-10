@@ -249,6 +249,17 @@ function looksLikeTitle(s: string): boolean {
 
 // ── Tokenizer ──────────────────────────────────────────────────────────────
 
+/** Common filler/stop words that dilute search scores when users type
+ *  natural-language prompts like "show me the booking data". */
+const STOP_WORDS = new Set([
+  "show", "me", "the", "a", "an", "of", "for", "and", "or", "in", "on",
+  "to", "is", "it", "my", "get", "give", "fetch", "find", "list", "all",
+  "please", "can", "you", "i", "want", "need", "see", "data", "report",
+  "details", "info", "information", "current", "latest", "today", "now",
+  "this", "that", "with", "from", "by", "what", "how", "which", "their",
+  "our", "has", "have", "are", "was", "were", "be", "been", "do", "does",
+]);
+
 /** Split a string into lowercase word tokens, stripping punctuation. */
 function tokenize(s: string): string[] {
   return s
@@ -256,6 +267,14 @@ function tokenize(s: string): string[] {
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((t) => t.length > 0);
+}
+
+/** Tokenize a search query, removing stop words that dilute matching scores.
+ *  Falls back to full tokens if ALL words are stop words. */
+function tokenizeSearch(s: string): string[] {
+  const all = tokenize(s);
+  const filtered = all.filter((t) => !STOP_WORDS.has(t));
+  return filtered.length > 0 ? filtered : all;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -312,7 +331,7 @@ export function matchQueries(
   searchTerm: string,
   catalog: QueryEntry[],
 ): MatchResult[] {
-  const searchTokens = tokenize(searchTerm);
+  const searchTokens = tokenizeSearch(searchTerm);
   if (searchTokens.length === 0) return [];
 
   const results: MatchResult[] = [];
@@ -321,11 +340,15 @@ export function matchQueries(
   // partially match "lymtd", "ytd" must NOT match "lytd", etc.
   const DATE_KEYWORDS = new Set(["mtd", "ytd", "lytd", "lymtd", "lmtd", "fy", "weekly"]);
 
+  /** Naive plural stemming: strip trailing 's' for comparison.
+   *  "bookings" → "booking", "leads" → "lead", etc. */
+  const stem = (t: string) => t.length > 3 && t.endsWith("s") ? t.slice(0, -1) : t;
+
   for (const entry of catalog) {
     let score = 0;
     for (const st of searchTokens) {
-      if (entry.tokens.some((tt) => tt === st)) {
-        // Exact token match — full weight
+      if (entry.tokens.some((tt) => tt === st || stem(tt) === stem(st))) {
+        // Exact token match (or plural match) — full weight
         score += 1;
       } else if (DATE_KEYWORDS.has(st)) {
         // Date keyword with no exact match — skip partial matching

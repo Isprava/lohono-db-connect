@@ -60,6 +60,15 @@ function isHistoricalRange(endDate: string): boolean {
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MATCH_THRESHOLD = 0.4;
 
+// ── Placeholder detection ────────────────────────────────────────────────
+
+const REDASH_DATE_PLACEHOLDER_RE = /\{\{\s*(Start Date|End Date)\s*\}\}/i;
+
+/** Check if a query's raw SQL contains Redash-style date placeholders. */
+function hasDatePlaceholders(sql: string): boolean {
+  return REDASH_DATE_PLACEHOLDER_RE.test(sql);
+}
+
 // ── Shared execution helper ─────────────────────────────────────────────
 
 interface ExecOpts {
@@ -205,7 +214,7 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
 
   async handler(args): Promise<ToolResult> {
     const parsed = RunPredefinedQueryInputSchema.parse(args);
-    const { query: searchTerm, start_date, end_date, locations, exclude_locations, variant } = parsed;
+    let { query: searchTerm, start_date, end_date, locations, exclude_locations, variant } = parsed;
     const startTime = Date.now();
     logger.info("run_predefined_query called", {
       searchTerm,
@@ -233,6 +242,39 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
           }, null, 2),
         }],
         isError: true,
+      };
+    }
+
+    // ── Strip agent-computed dates for queries with built-in date periods ──
+    // When the query title contains a date-period keyword (MTD, YTD, etc.),
+    // the SQL already has the correct date logic. The agent may incorrectly
+    // compute dates from the keyword (e.g. "YTD" → Jan 1) — ignore them.
+    // We keep end_date to allow "as of" overrides (e.g. "YTD as of Feb 15").
+    const DATE_PERIOD_RE = /\b(MTD|YTD|FYTD|LYTD|LYMTD|LMTD)\b/i;
+    const bestEntry = matches[0].entry;
+    if (DATE_PERIOD_RE.test(bestEntry.title) && start_date) {
+      logger.info("Ignoring agent-computed start_date for date-period query", {
+        queryTitle: bestEntry.title,
+        ignoredStartDate: start_date,
+      });
+      start_date = undefined;
+    }
+
+    // ── Check if matched query requires user-provided dates ───────────────
+    // Queries with Redash-style {{Start Date}} / {{End Date}} placeholders
+    // need explicit dates from the user. If none were provided, return a
+    // structured response telling the agent to ask the user.
+    const userProvidedDates = !!(start_date && end_date);
+    if (hasDatePlaceholders(bestEntry.sql) && !userProvidedDates) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            dates_required: true,
+            query_title: bestEntry.title,
+            message: `The query "${bestEntry.title}" requires a date range. Please provide start_date and end_date (YYYY-MM-DD) to run this query.`,
+          }, null, 2),
+        }],
       };
     }
 
@@ -296,6 +338,32 @@ export const runPredefinedQueryPlugin: ToolPlugin = {
         query_title: topMatches[0].entry.title,
         match_score: topScore,
         variants: Object.fromEntries(results.map((r) => [r.variant, r.data])),
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(combined, null, 2) }],
+      };
+    }
+
+    // Same-title duplicates — run all and return combined results
+    const isSameTitleDuplicates = topMatches.length > 1 &&
+      new Set(topMatches.map((m) => m.entry.title)).size === 1;
+
+    if (isSameTitleDuplicates) {
+      const results = await Promise.all(
+        topMatches.map((m, idx) =>
+          executeEntry(m.entry, m.score, { start_date, end_date, locations, exclude_locations, startTime })
+            .then((res) => {
+              const data = JSON.parse(res.content[0].text);
+              return { label: `result_${idx + 1}`, data };
+            })
+        )
+      );
+
+      const combined: Record<string, unknown> = {
+        query_title: topMatches[0].entry.title,
+        match_score: topScore,
+        results: Object.fromEntries(results.map((r) => [r.label, r.data])),
       };
 
       return {

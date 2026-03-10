@@ -20,7 +20,7 @@ const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 const EMBEDDING_DIMENSIONS = 384;
 
 const CSV_DIR = path.resolve("database/schema");
-const CSV_FILES = ["QueriesSheet1.csv", "QueriesSheet2.csv"];
+const CSV_FILES = ["QueriesSheet1.csv", "QueriesSheet2.csv", "QueriesSheet3.csv"];
 const OUTPUT_PATH = path.join(CSV_DIR, "query-knowledge-base.json");
 
 // ── Embedding loader (lazy) ─────────────────────────────────────────────────

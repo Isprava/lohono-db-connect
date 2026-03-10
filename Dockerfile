@@ -3,9 +3,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies first (layer caching)
+# Install vips dev libs so sharp can build from source when prebuilt binary download times out
+RUN apk add --no-cache vips-dev build-base python3
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN SHARP_FORCE_GLOBAL_LIBVIPS=1 npm ci --no-audit --no-fund
 
 # Copy source and build
 COPY tsconfig.json ./
@@ -18,9 +19,12 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Runtime vips library for sharp
+RUN apk add --no-cache vips
+
 # Install production dependencies only
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+RUN SHARP_FORCE_GLOBAL_LIBVIPS=1 npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist

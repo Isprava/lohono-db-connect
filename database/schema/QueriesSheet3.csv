@@ -1493,8 +1493,8 @@ INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = re
 Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
 and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())"
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'"
 Gateway Bookings GMV (MTD),"select cast(sum(gmv) as int) as gateway_gmv
 FROM
 (
@@ -1507,8 +1507,8 @@ INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = re
 Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
 and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'
 ) a
 
 inner join
@@ -1517,8 +1517,8 @@ SELECT rental_opportunities.slug,sum((rental_reservations.breakdown->> 'net_base
 FROM rental_opportunities
 INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'
 group by rental_opportunities.slug
 ) b on a.slug=b.slug
 ) main_query"
@@ -1531,8 +1531,8 @@ INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = re
 Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
 and rental_payments.status='fulfilled' and rental_payments.gateway='razorpay'
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'
 group by rental_opportunities.slug
 ) query"
 Gateway Bookings (YTD),"SELECT count(distinct(rental_opportunities.slug)) as gateway_bookings
@@ -1589,8 +1589,8 @@ INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = re
 Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
 and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())"
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'"
 Non Payment Gateway Bookings GMV (MTD),"select cast(sum(gmv) as int) as non_payment_gateway_gmv
 FROM
 (
@@ -1603,8 +1603,8 @@ INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = re
 Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
 and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'
 ) a
 
 inner join
@@ -1613,8 +1613,8 @@ SELECT rental_opportunities.slug,sum((rental_reservations.breakdown->> 'net_base
 FROM rental_opportunities
 INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'
 group by rental_opportunities.slug
 ) b on a.slug=b.slug
 ) main_query"
@@ -1627,8 +1627,56 @@ INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = re
 Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
 WHERE rental_reservations.status IN ('booked','force_booked')
 and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
-and date_part('month',confirmed_at) = date_part('month',now())
-and date_part('year',confirmed_at) = date_part('year',now())
+and confirmed_at >= date_trunc('month', CURRENT_DATE)
+and confirmed_at < CURRENT_DATE + interval '1 day'
+group by rental_opportunities.slug
+) query"
+Non Payment Gateway Bookings (YTD),"SELECT count(distinct(rental_opportunities.slug)) as non_payment_gateway_bookings
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))"
+Non Payment Gateway Bookings GMV (YTD),"select cast(sum(gmv) as int) as non_payment_gateway_gmv
+FROM
+(
+select a.slug,b.gmv
+FROM
+(
+select distinct rental_opportunities.slug
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))
+) a
+
+inner join
+(
+SELECT rental_opportunities.slug,sum((rental_reservations.breakdown->> 'net_base_rate')::float * (rental_reservations.breakdown->> 'currency_factor')::float) as gmv
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))
+group by rental_opportunities.slug
+) b on a.slug=b.slug
+) main_query"
+Non Payment Gateway Bookings: Time taken between Trip Creation and Booking Confirmed (YTD),"select round(avg(TAT)::double precision)::integer as average_time
+from
+(
+SELECT (rental_opportunities.slug), avg(EXTRACT(EPOCH from(rental_reservations.confirmed_at::TIMESTAMP - rental_opportunities.created_at::TIMESTAMP))/3600) as TAT
+FROM rental_opportunities
+INNER JOIN rental_reservations ON rental_reservations.rental_opportunity_id = rental_opportunities.id
+Inner join rental_payments on rental_payments.rental_opportunity_id=rental_opportunities.id
+WHERE rental_reservations.status IN ('booked','force_booked')
+and rental_payments.status='fulfilled' and rental_payments.gateway!='razorpay'
+and ((date_part('month',confirmed_at) >= 4 and date_part('year',confirmed_at) = 2022)
+or (date_part('month',confirmed_at) <= 3 and date_part('year',confirmed_at) = 2023))
 group by rental_opportunities.slug
 ) query"
 Call Recording Report,"select call_logs.id, call_transfer_status,call_status, call_direction, call_duration, called_number,(call_time + interval '5 hours 30 minutes') as call_time, date(call_logs.created_at) as created_at, call_transfer_duration, resource_type, original_url,staffs.name as poc

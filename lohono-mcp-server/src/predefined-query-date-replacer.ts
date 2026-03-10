@@ -149,5 +149,10 @@ export function replaceDatesInSql(
   result = result.replace(/\bNOW\s*\(\s*\)/gi, `TIMESTAMP '${endDate} 00:00:00'`);
   result = result.replace(/\bCURRENT_DATE\b/gi, `DATE '${endDate}'`);
 
+  // Replace Redash-style template variables: '{{Start Date}}' and '{{End Date}}'
+  // Handle optional whitespace inside braces (e.g. '{{ Start Date}}')
+  result = result.replace(/'\{\{\s*Start Date\s*\}\}'/gi, `'${startDate}'`);
+  result = result.replace(/'\{\{\s*End Date\s*\}\}'/gi, `'${endDate}'`);
+
   return result;
 }
