@@ -4,7 +4,7 @@ import {
   buildSalesFunnelQuery,
   getFunnelConfig,
 } from "../sales-funnel-builder.js";
-import { buildConsolidatedScorecardQuery } from "../consolidated-scorecard-builder.js";
+
 import { buildAgeingAnalysisQuery } from "../ageing-analysis-builder.js";
 import type { ToolPlugin, ToolResult } from "./types.js";
 import { logger } from "../../../shared/observability/src/logger.js";
@@ -15,23 +15,21 @@ import { Vertical, DEFAULT_VERTICAL, getVerticalOrDefault } from "../../../share
 
 const funnelConfig = getFunnelConfig();
 const metricKeys = Object.keys(funnelConfig.funnel_stages);  // e.g. ["lead", "prospect", "account", "sale"]
-const metricEnum = ["all", ...metricKeys, "consolidated_scorecard", "ageing_analysis"] as const;
+const metricEnum = ["all", ...metricKeys, "ageing_analysis"] as const;
 
 // ── Input schema ────────────────────────────────────────────────────────────
-// start_date / end_date are optional to support consolidated_scorecard which
-// auto-computes its own Indian FY date boundaries.
+// start_date / end_date are optional to support ageing_analysis which
+// is a current-state snapshot and doesn't need date boundaries.
 
 const GetSalesFunnelInputSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
-  // fiscal_year is accepted for consolidated_scorecard; if omitted, auto-derived from IST clock
-  fiscal_year: z.number().int().optional(),
   metric: z.enum(metricEnum).optional().default("all"),
   vertical: z.nativeEnum(Vertical).optional().default(DEFAULT_VERTICAL),
   locations: z.array(z.string()).optional(),
 }).refine(
-  (d) => d.metric === "ageing_analysis" || d.metric === "consolidated_scorecard" || (!!d.start_date && !!d.end_date),
-  { message: "start_date and end_date are required for non-scorecard metrics" },
+  (d) => d.metric === "ageing_analysis" || (!!d.start_date && !!d.end_date),
+  { message: "start_date and end_date are required for non-ageing metrics" },
 );
 
 // ── Query result cache (Redis-backed with in-memory fallback) ───────────────
@@ -45,8 +43,9 @@ const HISTORICAL_TTL = 86_400; // 24 hours — past data doesn't change
 const CURRENT_TTL = 60;       // 60 seconds — current month data is live
 
 const queryCache = new RedisCache<CacheEntry>("query:funnel", CURRENT_TTL);
-const consolidatedCache = new RedisCache<CacheEntry>("query:consolidated-scorecard", CURRENT_TTL);
+
 const ageingCache = new RedisCache<CacheEntry>("query:ageing-analysis", CURRENT_TTL);
+
 
 /** Returns true if the entire date range falls before the current month in IST. */
 function isHistoricalRange(endDate: string): boolean {
@@ -76,14 +75,14 @@ export const getSalesFunnelPlugin: ToolPlugin = {
   definition: {
     name: "get_sales_funnel",
     description:
-      `MANDATORY TOOL for sales funnel metrics, consolidated dashboard scorecard, and ageing analysis. ` +
+      `MANDATORY TOOL for sales funnel metrics and ageing analysis. ` +
       `Use the 'metric' parameter to select a specific metric (${metricDescriptions}) or omit it / use 'all' for the full funnel. ` +
-      `For Consolidated Dashboard / Consolidated Scorecard requests — use metric='consolidated_scorecard'. Dates are optional; if omitted, defaults to current Indian Financial Year (Apr 1 – today). ` +
       `For Ageing Analysis / Ageing Analysis - Consolidated Dashboard Query — use metric='ageing_analysis'. No dates needed; it is a current-state snapshot. ` +
       `CRITICAL: This is the ONLY correct way to query sales funnel or post-sales metrics. ` +
       `DO NOT write custom SQL queries — the logic is complex and already implemented correctly in this tool. ` +
-      `IMPORTANT EXCEPTION: Do NOT use this tool for named funnel reports such as "YTD Funnel", "LYTD Funnel", "FY Funnel", "Weekly Insights", ` +
-      `"Open Accounts", "Open Prospects", "Open Leads", "Closed Leads", "Overall Leads", scorecards, or conversion reports — use run_predefined_query for those instead. ` +
+      `IMPORTANT: Do NOT use this tool for named funnel reports such as "YTD Funnel", "LYTD Funnel", "FY Funnel", "Weekly Insights", ` +
+      `"Open Accounts", "Open Prospects", "Open Leads", "Closed Leads", "Overall Leads", or conversion reports — use run_predefined_query for those instead. ` +
+      `For Consolidated Dashboard / Consolidated Scorecard / Collection Summary — use run_predefined_query instead (it has the correct SQL). ` +
       `This tool returns aggregate COUNTS only; use run_predefined_query when the user wants to see individual rows/records.`,
     inputSchema: {
       type: "object" as const,
@@ -93,11 +92,11 @@ export const getSalesFunnelPlugin: ToolPlugin = {
         metric: {
           type: "string",
           enum: metricEnum,
-          description: `Which metric to return. Options: ${metricEnum.join(", ")}. Default 'all' returns the full funnel. Use 'consolidated_scorecard' for the Consolidated Dashboard (dates optional — defaults to current Indian FY if omitted). Use 'ageing_analysis' for the Ageing Analysis Dashboard (no dates needed — current snapshot).`,
+          description: `Which metric to return. Options: ${metricEnum.join(", ")}. Default 'all' returns the full funnel. Use 'ageing_analysis' for the Ageing Analysis Dashboard (no dates needed — current snapshot).`,
         },
         vertical: {
           type: "string",
-          description: "Business vertical (isprava, lohono_stays, the_chapter, solene). Defaults to 'isprava'. Not applicable for consolidated_scorecard (covers all verticals).",
+          description: "Business vertical (isprava, lohono_stays, the_chapter, solene). Defaults to 'isprava'.",
           enum: ["isprava", "lohono_stays", "the_chapter", "solene"],
         },
         locations: {
@@ -150,54 +149,6 @@ export const getSalesFunnelPlugin: ToolPlugin = {
           tool: "get_sales_funnel", metric: "ageing_analysis",
           cacheHit: false, sql: query.sql,
           rowCount: result.rowCount, executionMs: Date.now() - startTime,
-        };
-      }
-      return { content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }] };
-    }
-
-    // ── Consolidated Scorecard path ─────────────────────────────────────────
-    if (metric === "consolidated_scorecard") {
-      // Derive fiscal year from IST clock when not explicitly provided.
-      // FY starts April 1 — if we're in Jan-Mar the FY started the previous calendar year.
-      const nowUtc = new Date();
-      const istOffsetMs = 5.5 * 60 * 60 * 1000;
-      const nowIst = new Date(nowUtc.getTime() + istOffsetMs);
-      const fyStartYear = parsed.fiscal_year ??
-        (nowIst.getMonth() >= 3 ? nowIst.getFullYear() : nowIst.getFullYear() - 1);
-
-      const cacheKey = `consolidated:fy${fyStartYear}:${(locations || []).sort().join(",")}`;
-      const cached = await consolidatedCache.get(cacheKey);
-      if (cached) {
-        logger.info(`Cache hit: ${cacheKey}`);
-        const responseData: Record<string, unknown> = {
-          metric: "consolidated_scorecard",
-          fiscal_year: fyStartYear, locations,
-          rowCount: cached.rowCount,
-          rows: cached.rows,
-        };
-        return { content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }] };
-      }
-
-      const query = buildConsolidatedScorecardQuery(fyStartYear, locations);
-      const result = await executeReadOnlyQuery(query.sql, []);
-      const rows = result.rows as Record<string, unknown>[];
-      await consolidatedCache.set(cacheKey, { rows, rowCount: result.rowCount }, CURRENT_TTL);
-
-      const responseData: Record<string, unknown> = {
-        metric: "consolidated_scorecard",
-        fiscal_year: fyStartYear, locations,
-        rowCount: result.rowCount,
-        rows,
-      };
-      if (DEBUG_MODE) {
-        responseData._debug = {
-          tool: "get_sales_funnel",
-          metric: "consolidated_scorecard",
-          fiscal_year: fyStartYear,
-          cacheHit: false,
-          sql: query.sql,
-          rowCount: result.rowCount,
-          executionMs: Date.now() - startTime,
         };
       }
       return { content: [{ type: "text", text: JSON.stringify(responseData, null, 2) }] };

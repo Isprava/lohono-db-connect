@@ -69,6 +69,68 @@ function hasDatePlaceholders(sql: string): boolean {
   return REDASH_DATE_PLACEHOLDER_RE.test(sql);
 }
 
+// ── Queries that manage their own date boundaries ───────────────────────
+// These queries use dynamic expressions (now(), CURRENT_DATE) internally
+// and have multi-boundary FY logic that the generic date replacer would break.
+const SKIP_DATE_REPLACEMENT_TITLES = new Set([
+  "Scorecard - Consolidated Dashboard Query",
+  "Collection Summary - Consolidated Dashboard Query",
+  "Ageing Analysis - Consolidated Dashboard Query",
+]);
+
+/** Returns true if a query title should skip the generic date replacement. */
+function shouldSkipDateReplacement(title: string): boolean {
+  return SKIP_DATE_REPLACEMENT_TITLES.has(title);
+}
+
+// ── Pre-formatted table for large result sets ───────────────────────────
+// Queries with many rows cause Claude to hallucinate values when
+// reformatting JSON into markdown tables. Pre-formatting server-side
+// ensures data integrity. Applied to ANY result set above the threshold.
+
+const PREFORMAT_ROW_THRESHOLD = 20;
+
+/** Format a number with commas and 2 decimal places (e.g. 17,00,000.00). */
+function fmtNum(v: unknown): string {
+  const n = Number(v);
+  if (isNaN(n)) return "0.00";
+  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Detect which columns are numeric by inspecting the first few rows. */
+function classifyColumns(rows: Record<string, unknown>[]): { text: string[]; numeric: string[] } {
+  const cols = Object.keys(rows[0] || {});
+  const text: string[] = [];
+  const numeric: string[] = [];
+  for (const col of cols) {
+    // Sample up to 5 non-null values
+    const samples = rows.slice(0, 5).map((r) => r[col]).filter((v) => v != null);
+    const allNumeric = samples.length > 0 && samples.every((v) => typeof v === "number" || (typeof v === "string" && v !== "" && !isNaN(Number(v))));
+    if (allNumeric) numeric.push(col);
+    else text.push(col);
+  }
+  return { text, numeric };
+}
+
+/** Build a pre-formatted markdown table from query rows. */
+function preformatTable(rows: Record<string, unknown>[]): string {
+  const columns = Object.keys(rows[0] || {});
+  const { numeric } = classifyColumns(rows);
+  const numericSet = new Set(numeric);
+
+  const header = "| " + columns.join(" | ") + " |";
+  const separator = "| " + columns.map(() => "---").join(" | ") + " |";
+  const dataRows = rows.map((row) => {
+    return "| " + columns.map((col) => {
+      const val = row[col];
+      if (numericSet.has(col)) return fmtNum(val);
+      return String(val ?? "");
+    }).join(" | ") + " |";
+  });
+
+  return [header, separator, ...dataRows].join("\n");
+}
+
 // ── Shared execution helper ─────────────────────────────────────────────
 
 interface ExecOpts {
@@ -89,7 +151,9 @@ async function executeEntry(
   const effectiveEndDate = opts.end_date || defaults.endDate;
 
   let sql = entry.sql;
-  sql = replaceDatesInSql(sql, effectiveStartDate, effectiveEndDate);
+  if (!shouldSkipDateReplacement(entry.title)) {
+    sql = replaceDatesInSql(sql, effectiveStartDate, effectiveEndDate);
+  }
 
   const hasLocFilter = (opts.locations && opts.locations.length > 0) ||
     (opts.exclude_locations && opts.exclude_locations.length > 0);
@@ -115,6 +179,12 @@ async function executeEntry(
   const cached = await queryCache.get(cacheKey);
   if (cached) {
     logger.info(`Cache hit: ${cacheKey}`);
+    // Pre-format large result sets as markdown to prevent Claude hallucination
+    if (cached.rows.length > PREFORMAT_ROW_THRESHOLD) {
+      const table = preformatTable(cached.rows);
+      const responseText = `Query: ${entry.title}\nRows: ${cached.rowCount}\n\nIMPORTANT: Present this table EXACTLY as shown below. Do NOT modify, recalculate, or summarize any values. If the user asks for a summary or aggregation, use run_dynamic_query with a GROUP BY SQL query instead of computing it yourself.\n\n${table}`;
+      return { content: [{ type: "text", text: responseText }] };
+    }
     const responseData: Record<string, unknown> = {
       query_title: `${entry.title}${variantLabel}`,
       match_score: matchScore,
@@ -140,6 +210,13 @@ async function executeEntry(
 
   const ttl = isHistoricalRange(effectiveEndDate) ? HISTORICAL_TTL : CURRENT_TTL;
   await queryCache.set(cacheKey, { rows, rowCount: result.rowCount }, ttl);
+
+  // Pre-format large result sets as markdown to prevent Claude hallucination
+  if (rows.length > PREFORMAT_ROW_THRESHOLD) {
+    const table = preformatTable(rows);
+    const responseText = `Query: ${entry.title}\nRows: ${result.rowCount}\n\nIMPORTANT: Present this table EXACTLY as shown below. Do NOT modify, recalculate, or summarize any values. If the user asks for a summary or aggregation, use run_dynamic_query with a GROUP BY SQL query instead of computing it yourself.\n\n${table}`;
+    return { content: [{ type: "text", text: responseText }] };
+  }
 
   const responseData: Record<string, unknown> = {
     query_title: `${entry.title}${variantLabel}`,

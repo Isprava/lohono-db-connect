@@ -48,9 +48,10 @@ export function buildConsolidatedScorecardQuery(
 -- ==================== CONSOLIDATED SCORECARD: ISPRAVA + CHAPTER ====================
 
 WITH isprava_base_data AS (
-    SELECT p.name AS property
+    SELECT DISTINCT p.name AS property, l.city AS location
     FROM development_opportunity_properties op
     INNER JOIN development_properties p ON op.development_property_id = p.id
+    INNER JOIN development_locations l ON l.id = p.development_location_id
     INNER JOIN development_opportunities o ON op.development_opportunity_id = o.id
     WHERE p.include_in_reports = TRUE
       AND backed_out_at IS NULL
@@ -431,6 +432,7 @@ property_actual_pending AS (
 -- ── Isprava final metrics ─────────────────────────────────────────────────────
 isprava_metrics AS (
     SELECT bd.property,
+           bd.location,
            COALESCE(lc.budget_amount, 0) + COALESCE(lp.budget_amount, 0) AS budgeted_lytd_plan,
            COALESCE(la.collected_amount, 0) + COALESCE(lr.refund_amount, 0) AS actuals_lytd_collected,
            COALESCE(lr.refund_amount, 0) AS actuals_lytd_refunds,
@@ -461,9 +463,10 @@ isprava_metrics AS (
 -- ==================== CHAPTER SECTION ====================
 
 chapter_base_data AS (
-    SELECT p.name AS property
+    SELECT DISTINCT p.name AS property, l.city AS location
     FROM chapter_opportunity_properties op
     INNER JOIN chapter_properties p ON op.chapter_property_id = p.id
+    INNER JOIN chapter_locations l ON l.id = p.chapter_location_id
     INNER JOIN chapter_opportunities o ON op.chapter_opportunity_id = o.id
     WHERE p.include_in_reports = TRUE AND backed_out_at IS NULL AND ${loc}
 ),
@@ -689,6 +692,7 @@ chapter_property_actual_pending AS (
 
 chapter_metrics AS (
     SELECT bd.property,
+           bd.location,
            COALESCE(lp.budget_amount, 0) AS budgeted_lytd_plan,
            COALESCE(la.collected_amount, 0) AS actuals_lytd_collected,
            COALESCE(lr.refund_amount, 0) AS actuals_lytd_refunds,
@@ -713,24 +717,25 @@ chapter_metrics AS (
 
 -- ==================== COMBINED UNION ====================
 combined_union AS (
-    SELECT property, budgeted_ytd_plan, revised_ytd_budget_plan,
+    SELECT property, location, budgeted_ytd_plan, revised_ytd_budget_plan,
            net_actuals_ytd, variance, actuals_ytd_refunds
     FROM isprava_metrics
     UNION ALL
-    SELECT property, budgeted_ytd_plan, revised_ytd_budget_plan,
+    SELECT property, location, budgeted_ytd_plan, revised_ytd_budget_plan,
            net_actuals_ytd, variance, actuals_ytd_refunds
     FROM chapter_metrics
 )
 
 SELECT
     property,
+    location,
     COALESCE(SUM(budgeted_ytd_plan),       0) AS ytd_planned_budget,
     COALESCE(SUM(revised_ytd_budget_plan), 0) AS normalised_budget,
     COALESCE(SUM(net_actuals_ytd),         0) AS collections,
     COALESCE(SUM(variance),                0) AS variance,
     COALESCE(SUM(actuals_ytd_refunds),     0) AS ytd_refunds
 FROM combined_union
-GROUP BY property
+GROUP BY property, location
 ORDER BY property;
 `;
 
