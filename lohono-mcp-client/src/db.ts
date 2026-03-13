@@ -157,6 +157,29 @@ export async function appendMessage(
 }
 
 /**
+ * Update the most recent assistant message in a session by prepending content.
+ * Used for direct table passthrough — the table is streamed to the user during
+ * tool execution but needs to be persisted so it survives page reload.
+ */
+export async function prependToLastAssistantMessage(
+  sessionId: string,
+  prefix: string
+): Promise<void> {
+  const lastAssistant = await messages
+    .find({ sessionId, role: "assistant" })
+    .sort({ createdAt: -1 })
+    .limit(1)
+    .toArray();
+  if (lastAssistant.length > 0) {
+    const existing = lastAssistant[0].content || "";
+    await messages.updateOne(
+      { _id: lastAssistant[0]._id },
+      { $set: { content: prefix + (existing ? "\n\n" + existing : "") } }
+    );
+  }
+}
+
+/**
  * Retrieve messages for a session, ordered by creation time.
  * When `limit` is provided, returns only the most recent N messages
  * (useful for windowing Claude API calls to control token usage).

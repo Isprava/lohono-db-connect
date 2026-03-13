@@ -5,6 +5,7 @@ import {
   appendMessage,
   getMessages,
   updateSessionTitle,
+  prependToLastAssistantMessage,
   type Message as DbMessage,
 } from "./db.js";
 import { withClaudeSpan, withSpan, logInfo, logError } from "../../shared/observability/src/index.js";
@@ -296,7 +297,7 @@ When the user uses any of these abbreviations, resolve them to the corresponding
 1. **NEVER ask for clarification before trying run_predefined_query.** For ANY data question — no matter how vague ("show me bookings", "booking data", "leads", "prospects", "GMV") — ALWAYS call run_predefined_query FIRST with the user's words as the search term. The tool has fuzzy matching against 96 predefined queries and will find a match if one exists. Do NOT ask the user to clarify, specify dates, pick a vertical, or narrow their question. Just call the tool immediately. If it finds a match, present the results. If it returns no match (below confidence threshold), THEN proceed to step 2. Do NOT use get_sales_funnel for these — the predefined query catalog contains the correct, fully-formed SQL.
    - If run_predefined_query finds a match and returns data, use that result. Do NOT call get_sales_funnel or run_dynamic_query as a follow-up for the same question.
    - **Scorecard / Consolidated Dashboard / Collection Summary / Ageing Analysis:** These queries MUST ONLY be run via run_predefined_query. NEVER write your own SQL for these — the predefined queries contain complex, validated business logic that cannot be replicated ad-hoc. Search for "scorecard consolidated", "collection summary consolidated", or "ageing analysis consolidated" respectively.
-   - **Present predefined query results exactly as returned.** Do NOT reinterpret, recalculate, or rename columns. In particular, scorecard columns \`l2p\`, \`p2a\`, \`a2s\` are average **days** between stages (lead-to-prospect, prospect-to-account, account-to-sale) — NOT conversion percentages. Show the raw integer values with the label "days". Do NOT compute your own conversion rates from the counts.
+   - **Present predefined query results exactly as returned — NO EXCEPTIONS.** When the tool returns a markdown table, output EVERY row of that table verbatim. Do NOT truncate, skip, abbreviate, or replace any rows with "…" or ellipses. Do NOT add text before the table. Do NOT reformat, rename columns, or reorder data. Show the complete table first, then optionally add a brief note after. This rule overrides any other formatting guidance. Do NOT reinterpret, recalculate, or rename columns. In particular, scorecard columns \`l2p\`, \`p2a\`, \`a2s\` are average **days** between stages (lead-to-prospect, prospect-to-account, account-to-sale) — NOT conversion percentages. Show the raw integer values with the label "days". Do NOT compute your own conversion rates from the counts.
    - **NEVER do arithmetic on query results yourself.** If the user asks to summarize, aggregate, group by, total, or compute averages from a previous result, ALWAYS use run_dynamic_query with a SQL GROUP BY query to compute the aggregation server-side. NEVER attempt to manually sum, average, or aggregate rows — you will get the numbers wrong. For example, if the user says "summarize by location", write a SQL query that wraps the original query logic with GROUP BY location and SUM() aggregations.
    - If run_predefined_query returns no match (no results or below confidence threshold), proceed to step 2.
    - **Repeat guest / LTV queries:** Some queries exist in two variants: "with_extensions" and "without_extensions". If the user does not specify a variant, both will be executed automatically and returned side by side. If the user specifies a variant, pass it as the variant parameter.
@@ -666,6 +667,16 @@ export async function chat(
         }
       }
 
+      // ── Direct table passthrough for non-streaming mode ──
+      let claudeResultText = resultText;
+      const directTableMatch = resultText.match(/<<DIRECT_TABLE>>([\s\S]*?)<<END_TABLE>>/);
+      if (directTableMatch) {
+        claudeResultText = resultText.replace(
+          /<<DIRECT_TABLE>>[\s\S]*?<<END_TABLE>>/,
+          "[Table data was streamed directly to the user — do NOT repeat it.]"
+        );
+      }
+
       toolCalls.push({
         name: tu.name,
         input: tu.input as Record<string, unknown>,
@@ -681,7 +692,7 @@ export async function chat(
       // Persist tool_result
       await appendMessage(sessionId, {
         role: "tool_result",
-        content: resultText,
+        content: claudeResultText,
         toolUseId: tu.id,
       });
     }
@@ -759,6 +770,7 @@ export async function* chatStream(
   let claudeMessages = dbMessagesToClaudeMessages(dbMsgs);
 
   let finalText = "";
+  let directTableAccum = "";
   let toolCallCount = 0;
   let toolCallErrored = false;
   const debugEntries: DebugEntry[] = [];
@@ -837,7 +849,10 @@ export async function* chatStream(
 
     // If no tool calls, we're done
     if (stopReason === "end_turn" || parsedToolBlocks.length === 0) {
-      finalText = assistantText;
+      // Prepend any direct-table content so it persists in MongoDB
+      finalText = directTableAccum
+        ? directTableAccum + (assistantText ? "\n\n" + assistantText : "")
+        : assistantText;
       break;
     }
 
@@ -894,6 +909,24 @@ export async function* chatStream(
         }
       }
 
+      // ── Direct table passthrough: stream table data directly to user ──
+      // When tool returns <<DIRECT_TABLE>>...<<END_TABLE>>, bypass Claude
+      // and send the table content straight to the SSE stream.
+      let claudeResultText = resultText;
+      const directTableMatch = resultText.match(/<<DIRECT_TABLE>>([\s\S]*?)<<END_TABLE>>/);
+      if (directTableMatch) {
+        const tableContent = directTableMatch[1];
+        // Stream the table directly to the user
+        yield { event: "text_delta" as const, data: { text: tableContent } };
+        // Accumulate for persistence — will be prepended to Claude's final response
+        directTableAccum += tableContent;
+        // Replace tool result for Claude — it should NOT see or repeat the table
+        claudeResultText = resultText.replace(
+          /<<DIRECT_TABLE>>[\s\S]*?<<END_TABLE>>/,
+          "[Table data was streamed directly to the user — do NOT repeat it.]"
+        );
+      }
+
       // Extract debug info from tool result if DEBUG_MODE is on
       if (DEBUG_MODE) {
         const debugEntry = extractDebugFromResult(resultText, tu.name, tu.input as Record<string, unknown>);
@@ -902,7 +935,7 @@ export async function* chatStream(
 
       await appendMessage(sessionId, {
         role: "tool_result",
-        content: resultText,
+        content: claudeResultText,
         toolUseId: tu.id,
       });
 
@@ -912,6 +945,16 @@ export async function* chatStream(
     // 5. Reload messages for next round
     const updatedDbMsgs = await getMessages(sessionId, MESSAGE_WINDOW_SIZE);
     claudeMessages = dbMessagesToClaudeMessages(updatedDbMsgs);
+  }
+
+  // If loop exhausted without break, ensure direct table content is included
+  if (!finalText && directTableAccum) {
+    finalText = directTableAccum;
+  }
+
+  // Persist direct table content in MongoDB so it survives page reload
+  if (directTableAccum) {
+    await prependToLastAssistantMessage(sessionId, directTableAccum);
   }
 
   // Auto-generate title for new sessions
